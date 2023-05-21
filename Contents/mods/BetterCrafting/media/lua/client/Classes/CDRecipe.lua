@@ -1,12 +1,9 @@
 require "CDTools"
---- The goal of this class is to group common recipes together.
---- This allows them to be grouped and displayed differently.
 
 CDRecipe = {};
-CDRecipe.commonComponent_hs = {};
-CDRecipe.baseRecipes_hs = {};  -- K:zombie.scripting.objects.Recipe
-CDRecipe.items_hs = {};  
-CDRecipe.product = {};  -- zombie.scripting.objects.Recipe.Result
+CDRecipe.baseRecipe = nil;  -- K:zombie.scripting.objects.Recipe
+CDRecipe.items_hs = {};  --   
+CDRecipe.product = nil;  -- zombie.scripting.objects.Recipe.Result
 
 
 function CDRecipe:New(recipe)
@@ -26,4 +23,8 @@ function CDRecipe:CompareTo(other)
 
     -- TOOD: Compare product
     return true;
+end
+
+function CDRecipe:SearchComponent(name_str)
+
 end
