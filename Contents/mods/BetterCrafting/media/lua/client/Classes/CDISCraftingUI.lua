@@ -1,6 +1,8 @@
+-- TODO: Figure out customRecipeName
 require "ISUI/ISCraftingUI"
 
 ISCraftingUI = ISCollapsableWindow:derive("ISCraftingUI");
+-- Singleton.
 ISCraftingUI.instance = nil;
 ISCraftingUI.largeFontHeight = getTextManager():getFontHeight(UIFont.Large)
 ISCraftingUI.mediumFontHeight = getTextManager():getFontHeight(UIFont.Medium)
@@ -12,6 +14,19 @@ ISCraftingUI.leftCategory = Keyboard.KEY_LEFT;
 ISCraftingUI.rightCategory = Keyboard.KEY_RIGHT;
 ISCraftingUI.upArrow = Keyboard.KEY_UP;
 ISCraftingUI.downArrow = Keyboard.KEY_DOWN;
+
+ISCraftingUI.allRecipes_hs = {};  -- hs[recipe]. Technically just all known recipes, but this is snappier.
+ISCraftingUI.recipeCategories_ht = {}  -- ht[string, hs[recipe]].
+ISCraftingUI.currentCategory_str = "";
+
+-- This should really be stored on an object somewhere, why does it need to be fetched and locally stored?
+ISCraftingUI.fontHeightSmall = getTextManager():getFontFromEnum(UIFont.Small):getLineHeight();
+ISCraftingUI.fontHeightMedium = getTextManager():getFontFromEnum(UIFont.Medium):getLineHeight();
+ISCraftingUI.favouriteXPos = 0;
+ISCraftingUI.favouriteXPad = 20;
+ISCraftingUI.favouriteStar = getTexture("media/ui/FavoriteStar.png");
+ISCraftingUI.favCheckedTex = getTexture("media/ui/FavoriteStarChecked.png");
+ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png");
 
 -- [[ Constructors
 function ISCraftingUI:new(x, y, width, height, character)
@@ -64,9 +79,14 @@ end
 
 function ISCraftingUI:createChildren()
     ISCollapsableWindow.createChildren(self);
-    local th = self:titleBarHeight();
-    local rh = self.resizable and self:resizeWidgetHeight() or 0
-    self.panel = ISTabPanel:new(0, th, self.width, self.height-th-rh-ISCraftingUI.bottomInfoHeight);
+    local top_handle_height = self:titleBarHeight();
+    local resize_handle_height = self.resizable and self:resizeWidgetHeight() or 0
+
+    -- Calculated for my sanity.
+    local main_view_y_bottom = self.height - resize_handle_height - ISCraftingUI.bottomInfoHeight;
+
+    local h = self.height - top_handle_height - resize_handle_height - ISCraftingUI.bottomInfoHeight;
+    self.panel = ISTabPanel:new(0, top_handle_height, self.width, h);
     self.panel:initialise();
     self.panel:setAnchorRight(true)
     self.panel:setAnchorBottom(true)
@@ -75,26 +95,9 @@ function ISCraftingUI:createChildren()
     self.panel.target = self;
     self.panel:setEqualTabWidth(false)
     self:addChild(self.panel);
-    self:populateRecipesList();
+    self:UpdateRecipes();
     self.categories = {};
-	local k
-    for k = 1 , #self.recipesListH, 1 do
-        -- local i = self.recipesListH[k]
-        -- local l = self.recipesList[i]
-        -- local cat1 = ISCraftingCategoryUI:new(0, 0, self.width, self.panel.height - self.panel.tabHeight, self);
-        -- cat1:initialise();
-        -- cat1:setAnchorRight(true)
-        -- cat1:setAnchorBottom(true)
-        -- local catName = getTextOrNull("IGUI_CraftCategory_"..i) or i
-        -- self.panel:addView(catName, cat1);
-        -- cat1.infoText = getText("UI_CraftingUI");
-        -- cat1.parent = self;
-        -- cat1.category = i;
-        -- for s,d in ipairs(l) do
-        --     cat1.recipes:addItem(s,d);
-        -- end
-        -- table.insert(self.categories, cat1);
-    end
+    
     -- dummy view
     local catName = "Testcat";
     local cat1 = CDDummyView:new(catName, self);
@@ -131,6 +134,7 @@ function ISCraftingUI:createChildren()
     self.ingredientPanel.drawBorder = true
     self.ingredientPanel:setVisible(false)
     self:addChild(self.ingredientPanel)
+
     self.ingredientListbox = ISScrollingListBox:new(1, 30, self.width / 3, self.height - (59 + ISCraftingUI.bottomInfoHeight));
     self.ingredientListbox:initialise();
     self.ingredientListbox:instantiate();
@@ -145,47 +149,94 @@ function ISCraftingUI:createChildren()
     self:addChild(self.ingredientListbox);
     self.ingredientListbox.PoisonTexture = self.PoisonTexture
 
-	self.noteRichText = ISRichTextLayout:new(self.width)
-	self.noteRichText:setMargins(0, 0, 0, 0)
-	self.noteRichText:setText(getText("IGUI_CraftUI_Note"))
-	self.noteRichText.textDirty = true
+    -- What compelled them to use rich text for static text, and manually update it in render?
+	-- self.noteRichText = ISRichTextLayout:new(self.width)
+	-- self.noteRichText:setMargins(0, 0, 0, 0)
+	-- self.noteRichText:setText(getText("IGUI_CraftUI_Note"))
+	-- self.noteRichText.textDirty = true
+    local h = ISCraftingUI.fontHeightSmall + 2 * 2;
+    local x = self:getWidth() / 3 + 10;
+    local y = main_view_y_bottom - h;
+    self.noteText = ISLabel:new(x, y, h, getText("IGUI_CraftUI_Note"), 1, 1, 1, 1, UIFont.Small, true);
+    self:addChild(self.noteText);
+    
+    local y = main_view_y_bottom + 2;
+    self.keysText = ISLabel:new(0, y, h, "", 1, 1, 1, 1, UIFont.Small, true);
+    self:addChild(self.keysText);
 
-	self.keysRichText = ISRichTextLayout:new(self.width)
-	self.keysRichText:setMargins(5, 0, 5, 0)
+    
+	-- self.keysRichText = ISRichTextLayout:new(self.width)
+	-- self.keysRichText:setMargins(5, 0, 5, 0)
 
+    -- == Filter area == --
     --- Why on God's green earth was this originally placed in ISCraftingCategoryUI?
     --- The majority ISCraftingCategoryUI has no business existing, and would be better served here.
     --- I try to keep my feelings toned down but my disappointment with this codebase is unmatched,
     ---   and today this is the straw that is too far for me :(
-    -- local fontHgtSmall = self.SMALL_FONT_HGT;
+    -- local ISCraftingUI.fontHeightSmall = self.fontHeightSmall;
     -- self.panel.height - self.panel.tabHeight
     local x = 4;
     local y = self.panel:getY() + self.panel.tabHeight + 4;
     local text = getText("IGUI_CraftUI_Name_Filter");
 
-    local fontHgtSmall = getTextManager():getFontFromEnum(UIFont.Small):getLineHeight();
-    local entryHgt = fontHgtSmall + 2 * 2;
+    local entryHgt = ISCraftingUI.fontHeightSmall + 2 * 2;
     self.filterLabel = ISLabel:new(x, y, entryHgt, text,1,1,1,1,UIFont.Small, true);
     self:addChild(self.filterLabel);
     x = x + getTextManager():MeasureStringX(UIFont.Small, text) + 9;
 
     local width = ((self.width/3) - getTextManager():MeasureStringX(UIFont.Small, text)) - 98;
-    self.filterEntry = ISTextEntryBox:new("", x, y, width, fontHgtSmall);
+    self.filterEntry = ISTextEntryBox:new("", x, y, width, ISCraftingUI.fontHeightSmall);
     self.filterEntry:initialise();
     self.filterEntry:instantiate();
     self.filterEntry:setText("");
     self.filterEntry:setClearButton(true);
     self:addChild(self.filterEntry);
-    self.lastText = self.filterEntry:getInternalText();
+    -- self.lastText = self.filterEntry:getInternalText();
     x = x + self.filterEntry.width + 5;
     
-    self.filterAll = ISTickBox:new(x, y, 20, entryHgt, "", self, self.onFilterAll)
-    self.filterAll:initialise()
+    -- AAAAAHAHAHAHAHAHAHAHHA. OOOHH! HHOOOOHOHHAHAHA!
+    -- I'M SURE THEY DESIGNED THIS CLASS TO INFLICT HARM ON ALL WHO USE IT!
+    self.filterAll = ISTickBox:new(x, y, 20, entryHgt, "", self, self.onFilterAll);
+    self.filterAll:initialise();
     self.filterAll:addOption(getText("IGUI_FilterAll"));
-    self.filterAll:setWidthToFit()
-    self:addChild(self.filterAll)
+    self.filterAll:setWidthToFit();
+    self.filterAll:setVisible(true);
+    self:addChild(self.filterAll);
+
+    y = y + entryHgt + 25;
+
+    -- == Recipe listbox == --
+    self.recipe_listbox = ISScrollingListBox:new(1, y, self.width / 3, main_view_y_bottom - y);
+    self.recipe_listbox:initialise();
+    self.recipe_listbox:instantiate();
+    self.recipe_listbox:setAnchorRight(false) -- resize in update()
+    self.recipe_listbox:setAnchorBottom(true)
+    self.recipe_listbox.itemheight = 2 + ISCraftingUI.fontHeightMedium + 32 + 4;
+    self.recipe_listbox.selected = 0;
+    -- TODO: Add recipe listbox events
+    self.recipe_listbox.doDrawItem = self.DrawRecipes;
+    -- self.recipe_listbox.onMouseDown = ISCraftingCategoryUI.onMouseDown_Recipes;
+    -- self.recipe_listbox.onMouseDoubleClick = ISCraftingCategoryUI.onMouseDoubleClick_Recipes;
+    self.recipe_listbox.joypadParent = self;
+    self.recipe_listbox.drawBorder = false;
+    self:addChild(self.recipe_listbox);
+    
+    -- Original code:
+    --local scrollBarWid = self.recipes:isVScrollBarVisible() and 13 or 0
+    --return self.recipes:getWidth() - scrollBarWid - self.favPadX - self.favWidth - self.favPadX
+
+    -- I'm not sure why they originally repositioned the star if the scroll bar was visible.
+    -- It's not like it's perfectly calculated to fit the golden ratio or something.
+    
+    -- What the fuck is this? Is this lua's version of a ternary?
+    -- o.favWidth = o.favouriteStar and o.favouriteStar:getWidth() or 13
+    self.favouriteXPos = self.recipe_listbox:getWidth() - self.favouriteXPad - self.favouriteStar:getWidth();
 
     self:refresh();
+end
+
+function ISCraftingUI:initialise()
+    ISCollapsableWindow.initialise(self);
 end
 -- ]]
 
@@ -207,20 +258,26 @@ end
 function ISCraftingUI:render()
     ISCollapsableWindow.render(self);
     if self.isCollapsed then return end
+
     local multipleItemEvolvedRecipes = {};
     self.addIngredientButton:setVisible(false);
-    local rh = self.resizable and self:resizeWidgetHeight() or 0
+    local resize_handle_height = self.resizable and self:resizeWidgetHeight() or 0
     self:drawRectBorder(0, 0, self:getWidth(), self:getHeight(), self.borderColor.a, self.borderColor.r,self.borderColor.g,self.borderColor.b);
-    self.javaObject:DrawTextureScaledColor(nil, 0, self:getHeight() - rh - ISCraftingUI.bottomInfoHeight, self:getWidth(), 1, self.borderColor.r, self.borderColor.g,self.borderColor.b,self.borderColor.a);
+    self.javaObject:DrawTextureScaledColor(nil, 0, self:getHeight() - resize_handle_height - ISCraftingUI.bottomInfoHeight, self:getWidth(), 1, self.borderColor.r, self.borderColor.g,self.borderColor.b,self.borderColor.a);
 
     local textWidth = getTextManager():MeasureStringX(UIFont.Small, getText("IGUI_CraftingUI_KnownRecipes", self.knownRecipes,self.totalRecipes))
     self:drawText(getText("IGUI_CraftingUI_KnownRecipes", self.knownRecipes,self.totalRecipes), self.width - textWidth - 5, self.panel:getY() + self.panel.tabHeight + 8, 1,1,1,1, UIFont.Small);
+    
+    local text = self.ingredientListbox:getIsVisible() and self.bottomInfoText2 or self.bottomInfoText1
+    self.keysText:setName(text);
+    local x = (self.width / 2) - (self.keysText.width / 2);
+    self.keysText:setX(x);
 
     return  -- DEBUG
-    -- local textY = self:getHeight() - rh - ISCraftingUI.bottomInfoHeight + (ISCraftingUI.bottomInfoHeight - ISCraftingUI.smallFontHeight) / 2
+    -- local textY = self:getHeight() - resize_handle_height - ISCraftingUI.bottomInfoHeight + (ISCraftingUI.bottomInfoHeight - ISCraftingUI.smallFontHeight) / 2
     -- local buttonSize = 24
     -- local buttonSpace = 8
-    -- local buttonY = self:getHeight() - rh - ISCraftingUI.bottomInfoHeight + (ISCraftingUI.bottomInfoHeight - buttonSize) / 2
+    -- local buttonY = self:getHeight() - resize_handle_height - ISCraftingUI.bottomInfoHeight + (ISCraftingUI.bottomInfoHeight - buttonSize) / 2
     -- local spacing = 32 
     -- if self.drawJoypadFocus and self.ingredientListbox:getIsVisible() then
     --     local width1 = buttonSize + buttonSpace + getTextManager():MeasureStringX(UIFont.Small, self.LabelAddIngredient)
@@ -275,7 +332,7 @@ function ISCraftingUI:render()
     --         self.keysRichText:setText(" <CENTRE> " .. text)
     --         self.keysRichText.textDirty = true
     --     end
-    --     local noteY = self:getHeight() - rh - ISCraftingUI.bottomInfoHeight
+    --     local noteY = self:getHeight() - resize_handle_height - ISCraftingUI.bottomInfoHeight
     --     noteY = noteY + (ISCraftingUI.bottomInfoHeight - self.keysRichText.height) / 2
     --     self.keysRichText:render(noteX, noteY, self)
     -- end
@@ -286,7 +343,7 @@ function ISCraftingUI:render()
     --     self.noteRichText:setWidth(noteWidth)
     --     self.noteRichText.textDirty = true
     -- end
-    -- local noteY = self:getHeight() - rh - ISCraftingUI.bottomInfoHeight - self.noteRichText.height - 4
+    -- local noteY = self:getHeight() - resize_handle_height - ISCraftingUI.bottomInfoHeight - self.noteRichText.height - 4
     -- if noteY >= self.craftOneButton:getBottom() + 10 then
     --     self.noteRichText:render(noteX, noteY, self)
     -- end
@@ -539,7 +596,7 @@ end
 function ISCraftingUI:setVisible(visible_b)
     self.javaObject:setVisible(visible_b);
     self.javaObject:setEnabled(visible_b)
-    if true then return end;
+    if true then return end;  -- DEBUG
 
     if not visible_b then -- save the selected index
         self.selectedIndex = {};
@@ -568,11 +625,388 @@ function ISCraftingUI:setVisible(visible_b)
 end
 -- ]]
 
-function ISCraftingUI:getRecipeListBox()
-    return self.panel.activeView.view.recipes
+-- TODO: Update containerList
+function ISCraftingUI:UpdateRecipes()
+    local recipes = getAllRecipes();  -- Java array
+    for i = 0, recipes:size() - 1 do
+        local newItem = {};
+        local recipe = recipes:get(i);
+        if recipe:isHidden() or not self.character or (recipe:needToBeLearn() and not self.character:isRecipeKnown(recipe)) then
+
+        else
+            local r = CDRecipe:New(recipe, self.character, self.containerList);
+
+
+            -- if self.recipeCategories_ht[r.categories_str] == nil then
+                -- self.recipeCategories_ht[r.categories_str] = {};
+            -- end
+            -- self.recipeCategories_ht[r.categories_str][r] = true;
+            self.allRecipes_hs[r] = true;
+        end
+    end
+
+    -- TODO: Index evolved recipes.
+    -- TODO: Favourited recipes.
+    if true then return end;
+    
+    self.allRecipesList = {};
+    self.recipesList = {};
+	self.recipesListH = {};
+    self.recipesList[getText("IGUI_CraftCategory_Favorite")] = {}; -- set these 2 to have a good order
+	self.recipesListH[#self.recipesListH+1] = getText("IGUI_CraftCategory_Favorite")
+    self.recipesList[getText("IGUI_CraftCategory_General")] = {};
+	self.recipesListH[#self.recipesListH+1] = getText("IGUI_CraftCategory_General")
+    self:getContainers();
+
+    for i=0,allRecipes:size()-1 do
+        local newItem = {};
+        local recipe = allRecipes:get(i);
+        if not recipe:isHidden() and (not recipe:needToBeLearn() or (self.character and self.character:isRecipeKnown(recipe))) then
+            if recipe:getCategory() then
+                newItem.category = recipe:getCategory();
+            else
+                newItem.category = getText("IGUI_CraftCategory_General");
+            end
+            if not self.recipesList[newItem.category] then
+                self.recipesList[newItem.category] = {};
+                self.recipesListH[#self.recipesListH+1] = newItem.category
+            end
+            newItem.recipe = recipe;
+            if self.character then
+                newItem.available = RecipeManager.IsRecipeValid(recipe, self.character, nil, self.containerList);
+
+                local modData = self.character:getModData();
+                if modData[self:getFavoriteModDataLocalString(recipe)] or false then  -- Update the favourite list and save backward compatibility
+                    modData[self:getFavoriteModDataString(recipe)] = true;
+                end
+                newItem.favourite = modData[self:getFavoriteModDataString(recipe)] or false;
+            end
+            if newItem.favourite then
+                table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newItem);
+            end
+            local resultItem = self:GetItemInstance(recipe:getResult():getFullType());
+            if resultItem then
+                newItem.texture = resultItem:getTex();
+                newItem.itemName = resultItem:getDisplayName();
+                if recipe:getResult():getCount() > 1 then
+                   newItem.itemName = (recipe:getResult():getCount() * resultItem:getCount()) .. " " .. newItem.itemName;
+                end
+            end
+            newItem.sources = {};
+            for x=0,recipe:getSource():size()-1 do
+                local source = recipe:getSource():get(x);
+                local sourceInList = {};
+                sourceInList.items = {}
+                for k=1,source:getItems():size() do
+                    local sourceFullType = source:getItems():get(k-1)
+                    local item = nil
+                    local itemName = nil
+                    if sourceFullType == "Water" then
+                        item = self:GetItemInstance("Base.WaterDrop");
+                    elseif luautils.stringStarts(sourceFullType, "[") then
+                        item = self:GetItemInstance("Base.WristWatch_Right_DigitalBlack");
+                    else
+                        item = self:GetItemInstance(sourceFullType);
+                    end
+                    
+                    if item then
+                        local itemInList = {};
+                        itemInList.count = source:getCount();
+                        itemInList.texture = item:getTex();
+                        if sourceFullType == "Water" then
+                            if itemInList.count == 1 then
+                                itemInList.name = getText("IGUI_CraftUI_CountOneUnit", getText("ContextMenu_WaterName"))
+                            else
+                                itemInList.name = getText("IGUI_CraftUI_CountUnits", getText("ContextMenu_WaterName"), itemInList.count)
+                            end
+                            if recipe:getHeat() < 0 then
+                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), itemInList.name);
+                            elseif recipe:getHeat() > 0 then
+                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), itemInList.name);
+                            end;
+                        elseif source:getItems():size() > 1 then -- no units
+                            itemInList.name = item:getDisplayName()
+                        elseif not source:isDestroy() and item:IsDrainable() then
+                            if itemInList.count == 1 then
+                                itemInList.name = getText("IGUI_CraftUI_CountOneUnit", item:getDisplayName())
+                            else
+                                itemInList.name = getText("IGUI_CraftUI_CountUnits", item:getDisplayName(), itemInList.count)
+                            end
+                            if recipe:getHeat() < 0 then
+                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), itemInList.name);
+                            elseif recipe:getHeat() > 0 then
+                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), itemInList.name);
+                            end;
+                        elseif not source:isDestroy() and source:getUse() > 0 then -- food
+                            itemInList.count = source:getUse()
+                            if itemInList.count == 1 then
+                                itemInList.name = getText("IGUI_CraftUI_CountOneUnit", item:getDisplayName())
+                            else
+                                itemInList.name = getText("IGUI_CraftUI_CountUnits", item:getDisplayName(), itemInList.count)
+                            end
+                        elseif itemInList.count > 1 then
+                            itemInList.name = getText("IGUI_CraftUI_CountNumber", item:getDisplayName(), itemInList.count)
+                        else
+                            itemInList.name = item:getDisplayName()
+                        end
+                        itemInList.fullType = item:getFullType()
+                        if sourceFullType == "Water" then
+                            itemInList.fullType = "Water"
+                        end
+                        table.insert(sourceInList.items, itemInList);
+                    end
+                end
+                table.insert(newItem.sources, sourceInList)
+            end
+            table.insert(self.recipesList[newItem.category], newItem);
+            table.insert(self.allRecipesList, newItem);
+        end
+    end
+    local newRecipe = {};
+    local itemInList = {};
+    local doneRecipes = {};
+    local doneItems = {};
+    for i=0,self.containerList:size()-1 do
+       local container = self.containerList:get(i);
+       for x=0,container:getItems():size() - 1 do
+           local baseItem = container:getItems():get(x);
+           local evorecipe = RecipeManager.getEvolvedRecipe(baseItem, self.character, self.containerList, false);
+           if evorecipe and evorecipe:size() > 0 then
+                for y=0,evorecipe:size() - 1 do
+                   local evo = evorecipe:get(y);
+                    if (not evo:isHidden() or baseItem:getType() ~= evo:getBaseItem()) then
+                        newRecipe = {};
+                        if not doneRecipes[evo:getName() .. baseItem:getFullType()] then
+                            doneRecipes[evo:getName() .. baseItem:getFullType()] = true;
+                            doneItems = {};
+                            newRecipe.baseItem = baseItem;
+                            local resultItem = self:GetItemInstance(evo:getFullResultItem());
+							if resultItem then 
+								newRecipe.texture = resultItem:getTex(); 
+								newRecipe.resultName = resultItem:getDisplayName();
+								newRecipe.items = {};
+								newRecipe.available = false;
+								newRecipe.itemName = evo:getName();
+								if baseItem:getType() ~= evo:getBaseItem() then
+									newRecipe.customRecipeName = getText("IGUI_CraftUI_FromBaseItem", baseItem:getDisplayName());
+									newRecipe.extraItems = {};
+									if baseItem:getExtraItems() then
+										for u=0,baseItem:getExtraItems():size()-1 do
+										   local extraItem = self:GetItemInstance(baseItem:getExtraItems():get(u));
+											if extraItem then
+												table.insert(newRecipe.extraItems, extraItem:getTex());
+											end
+										end
+									end
+									if instanceof(baseItem, "Food") and baseItem:getSpices() then
+										for u=0,baseItem:getSpices():size()-1 do
+										   local extraItem = self:GetItemInstance(baseItem:getSpices():get(u));
+											if extraItem then
+												table.insert(newRecipe.extraItems, extraItem:getTex());
+											end
+										end
+									end
+								end
+								newRecipe.recipe = evo;
+								newRecipe.evolved = true;
+								local itemCanBeUse = evo:getItemsCanBeUse(self.character, baseItem, self.containerList);
+								for l=0, itemCanBeUse:size()-1 do
+									local newItem = itemCanBeUse:get(l);
+									if not doneItems[newItem] then
+										doneItems[newItem] = true;
+										newRecipe.available = true;
+										itemInList.texture = newItem:getTex();
+										itemInList.name = newItem:getName();
+										itemInList.fullType = newItem:getFullType();
+										itemInList.itemToAdd = newItem;
+										itemInList.available = true;
+										itemInList.poison = self.character:isKnownPoison(newItem)
+										table.insert(newRecipe.items, itemInList);
+										itemInList = {};
+									end
+								end
+								if self.character then
+									local modData = self.character:getModData();
+									newRecipe.favourite = modData[self:getFavoriteModDataString(evo)] or false;
+								end
+								table.insert(self.recipesList["Cooking"], newRecipe);
+								table.insert(self.allRecipesList, newRecipe);
+								if newRecipe.favourite then
+									table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newRecipe);
+								end
+							end
+                       end
+                   end
+               end
+           end
+       end
+    end
+    local allRecipes = RecipeManager.getAllEvolvedRecipes();
+    for i=0, allRecipes:size()-1 do
+        local evolvedRecipe = allRecipes:get(i);
+        local found = false;
+        if not evolvedRecipe:isHidden() then
+            for x,v in ipairs(self.recipesList["Cooking"]) do
+                if v.evolved and v.recipe == evolvedRecipe then -- check possible missing items
+                    local possibleItems = evolvedRecipe:getPossibleItems();
+                    for k=0, possibleItems:size() -1 do
+                        local possibleItem = possibleItems:get(k);
+                        local found2 = false;
+                        for g,h in ipairs(v.items) do
+                            if h.fullType == possibleItem:getFullType() then
+                                found2 = true;
+                                break;
+                            end
+                        end
+                        if not found2 then
+                            local newItem = self:GetItemInstance(possibleItem:getFullType());
+                            itemInList.texture = newItem:getTex();
+                            itemInList.name = newItem:getDisplayName();
+                            itemInList.available = false;
+                            table.insert(v.items, itemInList);
+                            itemInList = {};
+                        end
+                    end
+                    found = true;
+                end
+            end
+            if not found then -- recipe not in list, we add it with all the missing items
+                newRecipe = {};
+                local resultItem = self:GetItemInstance(evolvedRecipe:getFullResultItem());
+                if resultItem then
+                    newRecipe.texture = resultItem:getTex();
+                    newRecipe.resultName = resultItem:getDisplayName();
+                    newRecipe.items = {};
+                    newRecipe.available = false;
+                    newRecipe.itemName = evolvedRecipe:getName();
+                    newRecipe.recipe = evolvedRecipe;
+                    newRecipe.evolved = true;
+                    newRecipe.baseItem = self:GetItemInstance(evolvedRecipe:getModule():getName() .. "." .. evolvedRecipe:getBaseItem());
+                    local possibleItems = evolvedRecipe:getPossibleItems();
+                    for k=0, possibleItems:size() -1 do
+                            local possibleItem = possibleItems:get(k);
+                            local newItem = self:GetItemInstance(possibleItem:getFullType());
+                            itemInList.texture = newItem:getTex();
+                            itemInList.name = newItem:getDisplayName();
+                            itemInList.available = false;
+                            table.insert(newRecipe.items, itemInList);
+                            itemInList = {};
+                    end
+                    if self.character then
+                            local modData = self.character:getModData();
+                            newRecipe.favourite = modData[self:getFavoriteModDataString(evolvedRecipe)] or false;
+                    end
+                    table.insert(self.recipesList["Cooking"], newRecipe);
+                    if newRecipe.favourite then
+                            table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newRecipe);
+                    end
+                else
+                    print('ISCraftingUI: no such result item '..tostring(evolvedRecipe:getFullResultItem()))
+                end
+            end
+        end
+    end
+end
+
+function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
+    self.recipe_listbox:clear();
+    self.recipe_listbox:setScrollHeight(0);
+    
+    local list = nil;
+    if all_b then
+        list = self.allRecipes_hs;
+    else
+        list = self.recipeCategories_ht[self.currentCategory_str];
+    end
+    if list == nil then
+        return;
+    end
+
+    for k, _ in pairs(list) do
+        self.recipe_listbox:addItem(k.outputName_str, k);
+    end
+
+    -- TODO: Implement filter parsing.
+    -- self.recipe_listbox.items = CDTools:ShallowCopy(list2);
+    table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
+end
+
+function ISCraftingUI:ParseFilter(filter_str)
+
+end
+
+function ISCraftingUI.DrawRecipes(recipe_listbox, y, item, alt)
+    local crafting_ui = recipe_listbox.parent;
+    local recipe = item.item;
+    local baseItemDY = 0
+    if recipe.customRecipeName then
+        baseItemDY = ISCraftingUI.fontHeightSmall
+        item.height = recipe_listbox.itemheight + baseItemDY
+    end
+
+    if y + recipe_listbox:getYScroll() >= recipe_listbox.height then return y + item.height end
+    if y + item.height + recipe_listbox:getYScroll() <= 0 then return y + item.height end
+
+    local a = 0.9;
+
+    if not recipe.available then
+        a = 0.3;
+    end
+
+    recipe_listbox:drawRectBorder(0, (y), recipe_listbox:getWidth(), item.height - 1, a, recipe_listbox.borderColor.r, recipe_listbox.borderColor.g, recipe_listbox.borderColor.b);
+
+    if recipe_listbox.selected == item.index then
+        recipe_listbox:drawRect(0, (y), recipe_listbox:getWidth(), item.height - 1, 0.3, 0.7, 0.35, 0.15);
+    end
+
+    recipe_listbox:drawText(recipe.baseRecipe:getName(), 6, y + 2, 1, 1, 1, a, UIFont.Medium);
+    -- if recipe.customRecipeName then
+    --     recipe_listbox:drawText(recipe.customRecipeName, 6, y + 2 + recipe_listbox.fontHeightMedium, 1, 1, 1, a, UIFont.Small);
+    -- end
+
+    local textWidth = 0;
+    if recipe.texture then
+        local texWidth = recipe.texture:getWidthOrig();
+        local texHeight = recipe.texture:getHeightOrig();
+        if texWidth <= 32 and texHeight <= 32 then
+            local tx = 6 + (32 - texWidth) / 2;
+            local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY + (32 - texHeight) / 2;
+            recipe_listbox:drawTexture(recipe.texture, tx, ty, a, 1, 1, 1);
+        else
+            local tx = 6;
+            local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY;
+            recipe_listbox:drawTextureScaledAspect(recipe.texture, 6, ty, 32, 32, a, 1, 1, 1);
+        end
+        local name = recipe.evolved and recipe.resultName or recipe.itemName
+        local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY + (32 - crafting_ui.fontHeightSmall) / 2 - 2;
+        recipe_listbox:drawText(name, texWidth + 20, ty, 1, 1, 1, a, UIFont.Small);
+    end
+
+    local star_icon = nil
+    local favouriteAlpha = a
+    -- Hovering recipe
+    if item.index == recipe_listbox.mouseoverselected and not recipe_listbox:isMouseOverScrollBar() then
+        if recipe_listbox:getMouseX() >= crafting_ui.favouriteXPos then
+            star_icon = recipe.favourite and crafting_ui.favCheckedTex or crafting_ui.favNotCheckedTex
+            favouriteAlpha = 0.9
+        else
+            star_icon = recipe.favourite and crafting_ui.favouriteStar or crafting_ui.favNotCheckedTex
+            favouriteAlpha = recipe.favourite and a or 0.3
+        end
+    elseif recipe.favourite then
+        star_icon = crafting_ui.favouriteStar
+    end
+
+    if star_icon then
+        local ty = y + (item.height / 2 - star_icon:getHeight() / 2);
+        recipe_listbox:drawTexture(star_icon, crafting_ui.favouriteXPos, ty, favouriteAlpha, 1, 1, 1);
+    end
+
+    return y + item.height;
 end
 
 function ISCraftingUI:refresh()
+    self:SetDisplayedRecipes("", true);-- DEBUG self.filterAll:isSelected(1));
     if true then return end;
     local recipeListBox = self:getRecipeListBox();
     local selectedItem = recipeListBox.items[recipeListBox.selected];
@@ -691,10 +1125,6 @@ function ISCraftingUI:getAvailableItemsType()
         end
     end
     return result;
-end
-
-function ISCraftingUI:initialise()
-    ISCollapsableWindow.initialise(self);
 end
 
 function ISCraftingUI:close()
@@ -1048,266 +1478,6 @@ function ISCraftingUI:onActivateView()
     recipeListBox:ensureVisible(recipeListBox.selected);
 end
 
-function ISCraftingUI:populateRecipesList()
-    local allRecipes = getAllRecipes();
-    self.allRecipesList = {};
-    self.recipesList = {};
-	self.recipesListH = {};
-    self.recipesList[getText("IGUI_CraftCategory_Favorite")] = {}; -- set these 2 to have a good order
-	self.recipesListH[#self.recipesListH+1] = getText("IGUI_CraftCategory_Favorite")
-    self.recipesList[getText("IGUI_CraftCategory_General")] = {};
-	self.recipesListH[#self.recipesListH+1] = getText("IGUI_CraftCategory_General")
-    self:getContainers();
-
-    for i=0,allRecipes:size()-1 do
-        local newItem = {};
-        local recipe = allRecipes:get(i);
-        if not recipe:isHidden() and (not recipe:needToBeLearn() or (self.character and self.character:isRecipeKnown(recipe))) then
-            if recipe:getCategory() then
-                newItem.category = recipe:getCategory();
-            else
-                newItem.category = getText("IGUI_CraftCategory_General");
-            end
-            if not self.recipesList[newItem.category] then
-                self.recipesList[newItem.category] = {};
-                self.recipesListH[#self.recipesListH+1] = newItem.category
-            end
-            newItem.recipe = recipe;
-            if self.character then
-                newItem.available = RecipeManager.IsRecipeValid(recipe, self.character, nil, self.containerList);
-
-                local modData = self.character:getModData();
-                if modData[self:getFavoriteModDataLocalString(recipe)] or false then  -- Update the favorite list and save backward compatibility
-                    modData[self:getFavoriteModDataString(recipe)] = true;
-                end
-                newItem.favorite = modData[self:getFavoriteModDataString(recipe)] or false;
-            end
-            if newItem.favorite then
-                table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newItem);
-            end
-            local resultItem = self:GetItemInstance(recipe:getResult():getFullType());
-            if resultItem then
-                newItem.texture = resultItem:getTex();
-                newItem.itemName = resultItem:getDisplayName();
-                if recipe:getResult():getCount() > 1 then
-                   newItem.itemName = (recipe:getResult():getCount() * resultItem:getCount()) .. " " .. newItem.itemName;
-                end
-            end
-            newItem.sources = {};
-            for x=0,recipe:getSource():size()-1 do
-                local source = recipe:getSource():get(x);
-                local sourceInList = {};
-                sourceInList.items = {}
-                for k=1,source:getItems():size() do
-                    local sourceFullType = source:getItems():get(k-1)
-                    local item = nil
-                    local itemName = nil
-                    if sourceFullType == "Water" then
-                        item = self:GetItemInstance("Base.WaterDrop");
-                    elseif luautils.stringStarts(sourceFullType, "[") then
-                        item = self:GetItemInstance("Base.WristWatch_Right_DigitalBlack");
-                    else
-                        item = self:GetItemInstance(sourceFullType);
-                    end
-                    if item then
-                        local itemInList = {};
-                        itemInList.count = source:getCount();
-                        itemInList.texture = item:getTex();
-                        if sourceFullType == "Water" then
-                            if itemInList.count == 1 then
-                                itemInList.name = getText("IGUI_CraftUI_CountOneUnit", getText("ContextMenu_WaterName"))
-                            else
-                                itemInList.name = getText("IGUI_CraftUI_CountUnits", getText("ContextMenu_WaterName"), itemInList.count)
-                            end
-                            if recipe:getHeat() < 0 then
-                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), itemInList.name);
-                            elseif recipe:getHeat() > 0 then
-                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), itemInList.name);
-                            end;
-                        elseif source:getItems():size() > 1 then -- no units
-                            itemInList.name = item:getDisplayName()
-                        elseif not source:isDestroy() and item:IsDrainable() then
-                            if itemInList.count == 1 then
-                                itemInList.name = getText("IGUI_CraftUI_CountOneUnit", item:getDisplayName())
-                            else
-                                itemInList.name = getText("IGUI_CraftUI_CountUnits", item:getDisplayName(), itemInList.count)
-                            end
-                            if recipe:getHeat() < 0 then
-                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), itemInList.name);
-                            elseif recipe:getHeat() > 0 then
-                                itemInList.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), itemInList.name);
-                            end;
-                        elseif not source:isDestroy() and source:getUse() > 0 then -- food
-                            itemInList.count = source:getUse()
-                            if itemInList.count == 1 then
-                                itemInList.name = getText("IGUI_CraftUI_CountOneUnit", item:getDisplayName())
-                            else
-                                itemInList.name = getText("IGUI_CraftUI_CountUnits", item:getDisplayName(), itemInList.count)
-                            end
-                        elseif itemInList.count > 1 then
-                            itemInList.name = getText("IGUI_CraftUI_CountNumber", item:getDisplayName(), itemInList.count)
-                        else
-                            itemInList.name = item:getDisplayName()
-                        end
-                        itemInList.fullType = item:getFullType()
-                        if sourceFullType == "Water" then
-                            itemInList.fullType = "Water"
-                        end
-                        table.insert(sourceInList.items, itemInList);
-                    end
-                end
-                table.insert(newItem.sources, sourceInList)
-            end
-            table.insert(self.recipesList[newItem.category], newItem);
-            table.insert(self.allRecipesList, newItem);
-        end
-    end
-    local newRecipe = {};
-    local itemInList = {};
-    local doneRecipes = {};
-    local doneItems = {};
-    for i=0,self.containerList:size()-1 do
-       local container = self.containerList:get(i);
-       for x=0,container:getItems():size() - 1 do
-           local baseItem = container:getItems():get(x);
-           local evorecipe = RecipeManager.getEvolvedRecipe(baseItem, self.character, self.containerList, false);
-           if evorecipe and evorecipe:size() > 0 then
-                for y=0,evorecipe:size() - 1 do
-                   local evo = evorecipe:get(y);
-                    if (not evo:isHidden() or baseItem:getType() ~= evo:getBaseItem()) then
-                        newRecipe = {};
-                        if not doneRecipes[evo:getName() .. baseItem:getFullType()] then
-                            doneRecipes[evo:getName() .. baseItem:getFullType()] = true;
-                            doneItems = {};
-                            newRecipe.baseItem = baseItem;
-                            local resultItem = self:GetItemInstance(evo:getFullResultItem());
-							if resultItem then 
-								newRecipe.texture = resultItem:getTex(); 
-								newRecipe.resultName = resultItem:getDisplayName();
-								newRecipe.items = {};
-								newRecipe.available = false;
-								newRecipe.itemName = evo:getName();
-								if baseItem:getType() ~= evo:getBaseItem() then
-									newRecipe.customRecipeName = getText("IGUI_CraftUI_FromBaseItem", baseItem:getDisplayName());
-									newRecipe.extraItems = {};
-									if baseItem:getExtraItems() then
-										for u=0,baseItem:getExtraItems():size()-1 do
-										   local extraItem = self:GetItemInstance(baseItem:getExtraItems():get(u));
-											if extraItem then
-												table.insert(newRecipe.extraItems, extraItem:getTex());
-											end
-										end
-									end
-									if instanceof(baseItem, "Food") and baseItem:getSpices() then
-										for u=0,baseItem:getSpices():size()-1 do
-										   local extraItem = self:GetItemInstance(baseItem:getSpices():get(u));
-											if extraItem then
-												table.insert(newRecipe.extraItems, extraItem:getTex());
-											end
-										end
-									end
-								end
-								newRecipe.recipe = evo;
-								newRecipe.evolved = true;
-								local itemCanBeUse = evo:getItemsCanBeUse(self.character, baseItem, self.containerList);
-								for l=0, itemCanBeUse:size()-1 do
-									local newItem = itemCanBeUse:get(l);
-									if not doneItems[newItem] then
-										doneItems[newItem] = true;
-										newRecipe.available = true;
-										itemInList.texture = newItem:getTex();
-										itemInList.name = newItem:getName();
-										itemInList.fullType = newItem:getFullType();
-										itemInList.itemToAdd = newItem;
-										itemInList.available = true;
-										itemInList.poison = self.character:isKnownPoison(newItem)
-										table.insert(newRecipe.items, itemInList);
-										itemInList = {};
-									end
-								end
-								if self.character then
-									local modData = self.character:getModData();
-									newRecipe.favorite = modData[self:getFavoriteModDataString(evo)] or false;
-								end
-								table.insert(self.recipesList["Cooking"], newRecipe);
-								table.insert(self.allRecipesList, newRecipe);
-								if newRecipe.favorite then
-									table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newRecipe);
-								end
-							end
-                       end
-                   end
-               end
-           end
-       end
-    end
-    local allRecipes = RecipeManager.getAllEvolvedRecipes();
-    for i=0, allRecipes:size()-1 do
-        local evolvedRecipe = allRecipes:get(i);
-        local found = false;
-        if not evolvedRecipe:isHidden() then
-            for x,v in ipairs(self.recipesList["Cooking"]) do
-                if v.evolved and v.recipe == evolvedRecipe then -- check possible missing items
-                    local possibleItems = evolvedRecipe:getPossibleItems();
-                    for k=0, possibleItems:size() -1 do
-                        local possibleItem = possibleItems:get(k);
-                        local found2 = false;
-                        for g,h in ipairs(v.items) do
-                            if h.fullType == possibleItem:getFullType() then
-                                found2 = true;
-                                break;
-                            end
-                        end
-                        if not found2 then
-                            local newItem = self:GetItemInstance(possibleItem:getFullType());
-                            itemInList.texture = newItem:getTex();
-                            itemInList.name = newItem:getDisplayName();
-                            itemInList.available = false;
-                            table.insert(v.items, itemInList);
-                            itemInList = {};
-                        end
-                    end
-                    found = true;
-                end
-            end
-            if not found then -- recipe not in list, we add it with all the missing items
-                newRecipe = {};
-                local resultItem = self:GetItemInstance(evolvedRecipe:getFullResultItem());
-                if resultItem then
-                    newRecipe.texture = resultItem:getTex();
-                    newRecipe.resultName = resultItem:getDisplayName();
-                    newRecipe.items = {};
-                    newRecipe.available = false;
-                    newRecipe.itemName = evolvedRecipe:getName();
-                    newRecipe.recipe = evolvedRecipe;
-                    newRecipe.evolved = true;
-                    newRecipe.baseItem = self:GetItemInstance(evolvedRecipe:getModule():getName() .. "." .. evolvedRecipe:getBaseItem());
-                    local possibleItems = evolvedRecipe:getPossibleItems();
-                    for k=0, possibleItems:size() -1 do
-                            local possibleItem = possibleItems:get(k);
-                            local newItem = self:GetItemInstance(possibleItem:getFullType());
-                            itemInList.texture = newItem:getTex();
-                            itemInList.name = newItem:getDisplayName();
-                            itemInList.available = false;
-                            table.insert(newRecipe.items, itemInList);
-                            itemInList = {};
-                    end
-                    if self.character then
-                            local modData = self.character:getModData();
-                            newRecipe.favorite = modData[self:getFavoriteModDataString(evolvedRecipe)] or false;
-                    end
-                    table.insert(self.recipesList["Cooking"], newRecipe);
-                    if newRecipe.favorite then
-                            table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newRecipe);
-                    end
-                else
-                    print('ISCraftingUI: no such result item '..tostring(evolvedRecipe:getFullResultItem()))
-                end
-            end
-        end
-    end
-end
-
 function ISCraftingUI:sortList() -- sort list with items you can craft in first
     local availableList = {};
     local notAvailableList = {};
@@ -1431,7 +1601,8 @@ function ISCraftingUI:onKeyRelease(key)
     if oldViewIndex ~= viewIndex then
         ui.panel:activateView(ui.panel.viewList[viewIndex].name)
     end
-    ui.panel.activeView.view.recipes:ensureVisible(ui.panel.activeView.view.recipes.selected)
+    -- TODO: Add this back in, whatever it does.
+    -- ui.panel.activeView.view.recipes:ensureVisible(ui.panel.activeView.view.recipes.selected)
 end
 
 function ISCraftingUI:getFavoriteModDataString(recipe)

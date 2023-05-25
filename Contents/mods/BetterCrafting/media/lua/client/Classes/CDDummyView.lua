@@ -21,6 +21,7 @@ function CDDummyView:new(name_str, parent)
     o = ISPanelJoypad:new(0, 0, 0, 0);
     setmetatable(o, self);
     CDDummyView.instance = o;
+    -- TODO: Change these to o?
     self.__index = self;
     self:noBackground();
     self.category = name_str;

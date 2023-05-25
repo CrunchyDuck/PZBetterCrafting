@@ -1,3 +1,7 @@
+-- Ability to search ingredients
+-- Ability for recipes to queue subrecipes, e.g. opening a can to use in cooking
+-- Group identical recipes.
+-- Hide recipes functionality
 require "Classes/CDDummyView"
 
 ISCraftingCategoryUI = ISPanelJoypad:derive("ISCraftingCategoryUI");

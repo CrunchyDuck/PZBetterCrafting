@@ -1,4 +1,12 @@
 name=Better Crafting
 id=CDCrafting
 description=Provides improved search functionality and recipe hiding with a cataclysm-style crafting menu.
+I rewrote the majority of the code behind the crafting UI. It was pretty atrocious and I refused to work with it.
+It's still pretty bad, but in rewriting it I came to understand, and hopefully I made it a bit better.
+
+Originally this was about adding some fun new options, but before long it became about me rewriting the codebase conected to this to spite the terrible practices I saw.
+
+Hopefully this mod makes your experience a bit better, too :) 
+
+Joypad controls haven't been properly supported in the new menu. I don't use one to play zomboid and I don't know the code well enough to implement it, sorry :(
 poster=poster.png

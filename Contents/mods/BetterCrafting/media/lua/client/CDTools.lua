@@ -1,3 +1,4 @@
+--- Also known as a growing list of ways Lua is an anemic language.
 CDTools = {}
 
 function CDTools:ShallowCopy(t)
@@ -29,4 +30,12 @@ function CDTools:TableContains(table, item, comparison_func)
         end
     end
     return -1;
+end
+
+-- Taken from: https://stackoverflow.com/questions/1410862/concatenation-of-tables-in-lua
+function CDTools:TableConcat(t1, t2)
+    for i = 1, #t2 do
+        t1[#t1 + 1] = t2[i]
+    end
+    return t1
 end
