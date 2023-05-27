@@ -99,7 +99,7 @@ function CDRecipe:GetItemInstance(type)
     local item_instance = self.static.itemInstances_ht[type];
     if item_instance then return item_instance end;
 
-    item_instance = InventoryItemFactory.CreateItem(type);  -- What is this type? What does it do?
+    item_instance = InventoryItemFactory.CreateItem(type);
     -- Shouldn't this break if item_instance is nil?
     if item_instance then
         self.static.itemInstances_ht[type] = item_instance;
