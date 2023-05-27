@@ -54,7 +54,7 @@ function CDRecipe:New(recipe, character, containers_ar)
 
     o.sources_ar = {};
     for x = 0, recipe:getSource():size() - 1 do
-        local source = CDSource:New(recipe, recipe:getSource():get(x));  -- zombie.scripting.objects.Recipe.Source
+        local source = CDSource:New(o, recipe:getSource():get(x));  -- zombie.scripting.objects.Recipe.Source
         table.insert(o.sources_ar, source);
     end
 

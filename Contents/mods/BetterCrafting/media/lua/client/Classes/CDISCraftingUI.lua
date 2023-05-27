@@ -665,10 +665,10 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
                 data.name = item.name
                 data.texture = item.texture
                 data.fullType = item.fullType
-                data.count = item.count
+                data.count = item.source.requiredCount_i
                 data.recipe = selectedItem.recipe
                 data.multiple = #source.items > 1
-                if selectedItem.typesAvailable and (not selectedItem.typesAvailable[item.fullType] or selectedItem.typesAvailable[item.fullType] < item.count) then
+                if selectedItem.typesAvailable and (not selectedItem.typesAvailable[item.fullType] or selectedItem.typesAvailable[item.fullType] < item.source.requiredCount_i) then
                     table.insert(unavailable, data)
                 else
                     table.insert(available, data)
@@ -707,15 +707,15 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             --]]
 
             for k,item in ipairs(available) do
-                if #source.items > 1 and item.count > 1 then
-                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.count), item)
+                if #source.items > 1 and item.source.requiredCount_i > 1 then
+                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
                 else
                     self.ingredientPanel:addItem(item.name, item)
                 end;
             end
             for k,item in ipairs(unavailable) do
-                if #source.items > 1 and item.count > 1 then
-                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.count), item)
+                if #source.items > 1 and item.source.requiredCount_i > 1 then
+                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
                 else
                     self.ingredientPanel:addItem(item.name, item)
                 end
@@ -765,7 +765,6 @@ function ISCraftingUI:UpdateRecipes()
     --- It will claim me. But it challenges me to impossible problems, and makes me feel alive.
     ---
     --- Never before have I had to do a writeup about a variable.
-    -- self:getContainers()
     self.recipeCategories_ht = {};
     local recipes = getAllRecipes();  -- Java array
     for i = 0, recipes:size() - 1 do
@@ -952,6 +951,7 @@ function ISCraftingUI:getAvailableItemsType()
     local result = {};
     local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item.baseRecipe;
     local items = RecipeManager.getAvailableItemsAll(recipe, self.character, self.containerList, nil, nil);
+
     for i=0, recipe:getSource():size()-1 do
         local source = recipe:getSource():get(i);
         local sourceItemTypes = {};
@@ -961,6 +961,7 @@ function ISCraftingUI:getAvailableItemsType()
         end
         for x=0,items:size()-1 do
             local item = items:get(x)
+
             if sourceItemTypes["Water"] and self:isWaterSource(item, source:getCount()) then
                 result["Water"] = (result["Water"] or 0) + item:getDrainableUsesInt()
             elseif sourceItemTypes[item:getFullType()] then
@@ -976,7 +977,9 @@ function ISCraftingUI:getAvailableItemsType()
                 result[item:getFullType()] = (result[item:getFullType()] or 0) + count;
             end
         end
+        testb = true;
     end
+    
     return result;
 end
 
@@ -1027,7 +1030,7 @@ function ISCraftingUI:drawNonEvolvedIngredient(y, item, alt)
         local r,g,b;
         local r2,g2,b2,a2;
         local typesAvailable = item.item.recipe.typesAvailable_hs;
-        if typesAvailable and (not typesAvailable[item.item.fullType] or typesAvailable[item.item.fullType] < item.item.count) then
+        if typesAvailable and (not typesAvailable[item.item.fullType] or typesAvailable[item.item.fullType] < item.item.source.requiredCount_i) then
             r,g,b = 0.54,0.54,0.54;
             r2,g2,b2,a2 = 1,1,1,0.3;
         else
@@ -1108,7 +1111,7 @@ function ISCraftingUI:refreshIngredientPanel()
         for _, source_item in ipairs(source.items_ar) do
             if source_item == nil then
             end
-            if recipe_types_available and (not recipe_types_available[source_item.fullType] or recipe_types_available[source_item.fullType] < source_item.count) then
+            if recipe_types_available and (not recipe_types_available[source_item.fullType] or recipe_types_available[source_item.fullType] < source_item.source.requiredCount_i) then
                 table.insert(unavailable, source_item);
             else
                 table.insert(available, source_item);
@@ -1143,16 +1146,16 @@ function ISCraftingUI:refreshIngredientPanel()
         table.sort(unavailable, function(a, b) return not string.sort(a.name, b.name) end)
 
         for _, item in ipairs(available) do
-            if #source.items_ar > 1 and item.count > 1 then
-                self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.count), item)
+            if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
+                self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
             else
                 self.ingredientPanel:addItem(item.name, item)
             end
         end
 
         for _, item in ipairs(unavailable) do
-            if #source.items_ar > 1 and item.count > 1 then
-                self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.count), item)
+            if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
+                self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
             else
                 self.ingredientPanel:addItem(item.name, item)
             end

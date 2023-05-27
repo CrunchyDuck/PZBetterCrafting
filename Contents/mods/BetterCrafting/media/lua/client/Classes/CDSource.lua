@@ -4,13 +4,16 @@
 CDSource = {};
 CDSource.baseSource = nil;
 CDSource.recipe = nil;
-CDSource.fullType = nil
+CDSource.requiredCount_i = 0;
 CDSource.items_ar = {};  -- ar[CDSourceItem]
 
+local b = false;
 function CDSource:New(recipe, source)
     local o = CDTools:ShallowCopy(CDSource)
     o.baseSource = source;
     o.recipe = recipe;
+    -- Originally this was stored on the items rather than the source? why??
+    o.requiredCount_i = source:getCount();
 
     for k = 0, source:getItems():size() - 1 do
         local fullType = source:getItems():get(k);
@@ -25,7 +28,7 @@ function CDSource:New(recipe, source)
 
         -- Is this ever false?
         if item_instance then
-            local cditem = CDSourceItem:New(recipe, source, item_instance);
+            local cditem = CDSourceItem:New(recipe, o, item_instance);
             table.insert(o.items_ar, cditem);
         end
     end
