@@ -50,3 +50,22 @@ function CDTools:CountTable(tab)
     end
     return i;
 end
+
+function CDTools:FindGlobal(dot_path_str)
+    local result = _G;
+    for _, path in pairs(CDTools:SplitString(dot_path_str, ".")) do
+        result = result[path];
+        if result == nil then
+            return nil;
+        end
+    end
+    return result;
+end
+
+function CDTools:SplitString(str, split_char)
+    local t = {};
+    for s in string.gmatch(str, "([^" .. split_char .. "]+)") do
+        table.insert(t, s);
+    end
+    return t
+end

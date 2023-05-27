@@ -11,6 +11,8 @@ CDRecipe.outputName_str = "";
 CDRecipe.sources_ar = {};  -- ar[CDSource]
 CDRecipe.available_b = false;
 CDRecipe.typesAvailable_hs = {};  -- Filled by the crafting UI... for some reason.
+CDRecipe.onTest = nil;
+CDRecipe.resultItem = nil;
 
 -- Bit gross to give every instance its own copy of static.
 CDRecipe.static = {};
@@ -27,8 +29,13 @@ function CDRecipe:New(recipe, character, containers_ar)
         o.category_str = getText("IGUI_CraftCategory_General");
     end
 
+    if recipe:getLuaTest() ~= nil then
+        o.onTest = CDTools:FindGlobal(recipe:getLuaTest());
+    end
+
     if character then
-        o.available_b = RecipeManager.IsRecipeValid(recipe, character, nil, containers_ar);
+        -- This works fine, but to stress test my mod I'm using my method.
+        -- o.available_b = RecipeManager.IsRecipeValid(recipe, character, nil, containers_ar);
 
         -- local modData = character:getModData();
         -- if modData[self:getFavoriteModDataLocalString(recipe)] or false then  -- Update the favorite list and save backward compatibility
@@ -41,14 +48,14 @@ function CDRecipe:New(recipe, character, containers_ar)
     --     table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newItem);
     -- end
 
-    local result_item = self:GetItemInstance(recipe:getResult():getFullType());
+    o.resultItem = self:GetItemInstance(recipe:getResult():getFullType());
     -- When is this ever false?
-    if result_item then
-        o.texture = result_item:getTex();
-        o.outputName_str = result_item:getDisplayName();
+    if o.resultItem then
+        o.texture = o.resultItem:getTex();
+        o.outputName_str = o.resultItem:getDisplayName();
         if recipe:getResult():getCount() > 1 then
             -- How does the math here work?
-            o.outputCount = (recipe:getResult():getCount() * result_item:getCount()) .. " " .. o.outputName_str;
+            o.outputCount = (recipe:getResult():getCount() * o.resultItem:getCount()) .. " " .. o.outputName_str;
         end
     end
 
@@ -56,6 +63,11 @@ function CDRecipe:New(recipe, character, containers_ar)
     for x = 0, recipe:getSource():size() - 1 do
         local source = CDSource:New(o, recipe:getSource():get(x));  -- zombie.scripting.objects.Recipe.Source
         table.insert(o.sources_ar, source);
+
+        if x == 0 then
+            o.available_b = true;
+        end
+        o.available_b = o.available_b and source.available_b;
     end
 
     -- o.product = recipe:getResult();
@@ -105,5 +117,5 @@ function CDRecipe:GetItemInstance(type)
         self.static.itemInstances_ht[type] = item_instance;
         self.static.itemInstances_ht[item_instance:getFullType()] = item_instance;  -- I don't understand why this is needed.
     end
-    return item_instance
+    return item_instance;
 end

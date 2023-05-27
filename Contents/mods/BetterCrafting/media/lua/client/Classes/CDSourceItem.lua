@@ -61,28 +61,35 @@ function CDSourceItem:New(recipe, source, item_instance)
         o.name = item_instance:getDisplayName()
     end
 
+    o.available_b = o:CheckAvailable();
+
+    return o;
+end
+
+function CDSourceItem:CheckAvailable()
     -- Calculate uses of an item.
     -- Largely taken from ISCraftingUI.getAvailableItemType
     -- TODO: I'm pretty sure that water won't work with this system; Figure it out.
-    local matching_items = ISCraftingUI.instance.availableItems_ht[o.fullType];
+    local matching_items = ISCraftingUI.instance.availableItems_ht[self.fullType];
     if matching_items == nil then
-        return o;
+        return false;
     end
     for _, item in pairs(matching_items) do
         local count = 1;
-        if not o.source.baseSource:isDestroy() and item:IsDrainable() then
+        if not self.source.baseSource:isDestroy() and item:IsDrainable() then
             count = item:getDrainableUsesInt()
-        end
-        if not o.source.baseSource:isDestroy() and instanceof(item, "Food") then
-            if o.source.baseSource:getUse() > 0 then
+        elseif not self.source.baseSource:isDestroy() and instanceof(item, "Food") then
+            if self.source.baseSource:getUse() > 0 then
                 count = -item:getHungerChange() * 100
             end
         end
-        o.numOfItem_i = o.numOfItem_i + count;
-    end
-    o.available_b = o.source.requiredCount_i <= o.numOfItem_i;
 
-    return o;
+        if self.recipe.onTest ~= nil and not self.recipe.onTest(item, self.recipe.resultItem) then
+            count = 0;
+        end
+        self.numOfItem_i = self.numOfItem_i + count;
+    end
+    return self.source.requiredCount_i <= self.numOfItem_i;
 end
 
 function CDSourceItem.isWaterSource(item)
