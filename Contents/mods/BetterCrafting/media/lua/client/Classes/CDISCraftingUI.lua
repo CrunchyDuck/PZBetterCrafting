@@ -1,4 +1,8 @@
 -- TODO: Figure out customRecipeName
+-- TODO: Queuing intermediate recipes.
+-- TODO: Show items that need to be unfrozen/cooked below the available items.
+-- TODO: Test if getPlayer() can replace self.character
+-- TODO: "Minimal mode", which displays recipes in a text-only format (akin to CDDA)
 require "ISUI/ISCraftingUI"
 
 ISCraftingUI = ISCollapsableWindow:derive("ISCraftingUI");
@@ -861,6 +865,77 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 -- ]]
 
+-- [[ Crafting
+    function ISCraftingUI:craftAll()
+        self:craft(nil, true);
+    end
+
+    function ISCraftingUI:craft(button, all)
+        self.craftInProgress = false
+        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
+        if recipe.evolved then return; end
+        -- TODO: Implement my logic for recipe validity.
+        if not RecipeManager.IsRecipeValid(recipe.baseRecipe, self.character, nil, self.containerList) then return; end
+        if not getPlayer() then return; end
+
+        local itemsUsed = self:transferItems();
+        if #itemsUsed == 0 then
+            self:Refresh();
+            return;
+        end
+        local returnToContainer = {};
+        local container = itemsUsed[1]:getContainer()
+        if not recipe.baseRecipe:isCanBeDoneFromFloor() then
+            container = self.character:getInventory()
+            for _,item in ipairs(itemsUsed) do
+                if item:getContainer() ~= self.character:getInventory() then
+                    table.insert(returnToContainer, item)
+                end
+            end
+        end
+
+        -- TODO: Look over ISCraftAction.
+        local action = ISCraftAction:new(self.character, itemsUsed[1], recipe.baseRecipe:getTimeToMake(), recipe.baseRecipe, container, self.containerList)
+        if all then
+            action:setOnComplete(ISCraftingUI.onCraftComplete, self, action, recipe.baseRecipe, container, self.containerList)
+        else
+            action:setOnComplete(ISCraftingUI.Refresh, self)    -- keep a track of our current task because we'll refresh the list once it's done
+        end
+        ISTimedActionQueue.add(action);
+
+        ISCraftingUI.ReturnItemsToOriginalContainer(self.character, returnToContainer)
+    end
+
+    function ISCraftingUI:transferItems()
+        local result = {};
+        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item.baseRecipe;
+        -- TODO: My own logic for getting items needed.
+        local items = RecipeManager.getAvailableItemsNeeded(recipe, self.character, self.containerList, nil, nil);
+        if items:isEmpty() then return result end;
+
+        for i = 0, items:size() - 1 do
+            local item = items:get(i);
+            table.insert(result, item);
+            if not recipe:isCanBeDoneFromFloor() then
+                if item:getContainer() ~= self.character:getInventory() then
+                    ISTimedActionQueue.add(ISInventoryTransferAction:new(self.character, item, item:getContainer(), self.character:getInventory(), nil));
+                end
+            end
+        end
+        return result;
+    end
+
+    function ISCraftingUI.ReturnItemsToOriginalContainer(playerObj, items)
+        for _, item in ipairs(items) do
+            if item:getContainer() ~= playerObj:getInventory() then
+                local action = ISInventoryTransferAction:new(playerObj, item, playerObj:getInventory(), item:getContainer(), nil)
+                action:setAllowMissingItems(true)
+                ISTimedActionQueue.add(action)
+            end
+        end
+    end
+-- ]]
+
 -- TODO: Update containerList
 function ISCraftingUI:UpdateRecipes()
     --- This following hash table caused, without exaggeration,
@@ -1056,24 +1131,6 @@ end
 
 function ISCraftingUI:isWaterSource(item)
     return instanceof(item, "DrainableComboItem") and item:isWaterSource()-- and item:getDrainableUsesInt() >= count
-end
-
-function ISCraftingUI:transferItems()
-    local result = {}
-    local recipeListBox = self:getRecipeListBox()
-    local recipe = recipeListBox.items[recipeListBox.selected].item.recipe;
-    local items = RecipeManager.getAvailableItemsNeeded(recipe, self.character, self.containerList, nil, nil);
-    if items:isEmpty() then return result end;
-    for i=1,items:size() do
-        local item = items:get(i-1)
-        table.insert(result, item)
-        if not recipe:isCanBeDoneFromFloor() then
-            if item:getContainer() ~= self.character:getInventory() then
-                ISTimedActionQueue.add(ISInventoryTransferAction:new(self.character, item, item:getContainer(), self.character:getInventory(), nil));
-            end
-        end
-    end
-    return result
 end
 
 --- Normally I rewrite functions, both to make them cleaner,
@@ -1541,46 +1598,6 @@ function ISCraftingUI:addItemInEvolvedRecipe(button)
     self:Refresh();
 end
 
-function ISCraftingUI:craftAll()
-    self:craft(nil, true);
-end
-
-function ISCraftingUI:craft(button, all)
-    self.craftInProgress = false
-    local recipeListBox = self:getRecipeListBox()
-    local selectedItem = recipeListBox.items[recipeListBox.selected].item;
-    if selectedItem.evolved then return; end
-    if not RecipeManager.IsRecipeValid(selectedItem.recipe, self.character, nil, self.containerList) then return; end
-
-    if not getPlayer() then return; end
-    local itemsUsed = self:transferItems();
-    if #itemsUsed == 0 then
-        self:Refresh();
-        return
-    end
-    local returnToContainer = {};
-    local container = itemsUsed[1]:getContainer()
-    if not selectedItem.recipe:isCanBeDoneFromFloor() then
-        container = self.character:getInventory()
-        for _,item in ipairs(itemsUsed) do
-            if item:getContainer() ~= self.character:getInventory() then
-                table.insert(returnToContainer, item)
-            end
-        end
-    end
-
-    local action = ISCraftAction:new(self.character, itemsUsed[1], selectedItem.recipe:getTimeToMake(), selectedItem.recipe, container, self.containerList)
-    if all then
-        action:setOnComplete(ISCraftingUI.onCraftComplete, self, action, selectedItem.recipe, container, self.containerList)
-    else
-        action:setOnComplete(ISCraftingUI.Refresh, self)    -- keep a track of our current task because we'll refresh the list once it's done
-    end
-    ISTimedActionQueue.add(action);
-
-    ISCraftingUI.ReturnItemsToOriginalContainer(self.character, returnToContainer)
-
-end
-
 function ISCraftingUI:onCraftComplete(completedAction, recipe, container, containers)
     if not RecipeManager.IsRecipeValid(recipe, self.character, nil, containers) then return end
     local items = RecipeManager.getAvailableItemsNeeded(recipe, self.character, containers, nil, nil)
@@ -1605,16 +1622,6 @@ function ISCraftingUI:onCraftComplete(completedAction, recipe, container, contai
     action:setOnComplete(ISCraftingUI.onCraftComplete, self, action, recipe, container, containers)
     ISTimedActionQueue.addAfter(previousAction, action)
     ISCraftingUI.ReturnItemsToOriginalContainer(self.character, returnToContainer)
-end
-
-function ISCraftingUI.ReturnItemsToOriginalContainer(playerObj, items)
-    for _,item in ipairs(items) do
-        if item:getContainer() ~= playerObj:getInventory() then
-            local action = ISInventoryTransferAction:new(playerObj, item, playerObj:getInventory(), item:getContainer(), nil)
-            action:setAllowMissingItems(true)
-            ISTimedActionQueue.add(action)
-        end
-    end
 end
 
 function ISCraftingUI:GetItemInstance(type)
