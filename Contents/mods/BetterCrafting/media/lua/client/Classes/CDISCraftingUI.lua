@@ -121,9 +121,9 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self.craftAllButton:initialise()
         self:addChild(self.craftAllButton);
 
-        self.debugGiveIngredientsButton = ISButton:new(0, 0, 50, 25, "DBG: Give Ingredients", self, ISCraftingUI.debugGiveIngredients);
-        self.debugGiveIngredientsButton:initialise();
-        self:addChild(self.debugGiveIngredientsButton);
+        -- self.debugGiveIngredientsButton = ISButton:new(0, 0, 50, 25, "DBG: Give Ingredients", self, ISCraftingUI.debugGiveIngredients);
+        -- self.debugGiveIngredientsButton:initialise();
+        -- self:addChild(self.debugGiveIngredientsButton);
 
         self.taskLabel = ISLabel:new(4,5,19,"",1,1,1,1,UIFont.Small, true);
         self:addChild(self.taskLabel);
@@ -252,6 +252,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
 
 -- [[ Events
     function ISCraftingUI:update()
+        self:Refresh();
         -- if self.craftInProgress then
         --     local currentAction = ISTimedActionQueue.getTimedActionQueue(self.character);
         --     if not currentAction or not currentAction.queue or not currentAction.queue[1] then
@@ -261,7 +262,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         -- end
         -- if self.needRefreshIngredientPanel then
         --     self.needRefreshIngredientPanel = false
-        --     self:refreshIngredientPanel()
+        --     self:RefreshIngredientPanel()
         -- end
     end
 
@@ -286,7 +287,11 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         local position = {};
         position.x = self:getWidth() / 3 + 80;
         position.y = 110;
-        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
+        local recipe = self:GetListboxSelected(self.recipe_listbox);
+        if recipe == nil then
+            return;
+        end
+        recipe = recipe.item;
         self:RenderRecipeDetails(position, recipe);
 
         if not recipe.evolved then
@@ -301,14 +306,13 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             -- recipe.available = RecipeManager.IsRecipeValid(recipe.baseRecipe, self.character, nil, self.containerList);
             self.craftOneButton:setVisible(true);
             self.craftAllButton:setVisible(true);
-            self.debugGiveIngredientsButton:setVisible(getDebug());
-
-            self.debugGiveIngredientsButton:setX(self.craftAllButton:getRight() + 5)
-            self.debugGiveIngredientsButton:setY(position.y);
+            -- self.debugGiveIngredientsButton:setVisible(getDebug());
+            -- self.debugGiveIngredientsButton:setX(self.craftAllButton:getRight() + 5)
+            -- self.debugGiveIngredientsButton:setY(position.y);
         else
             self.craftOneButton:setVisible(false);
             self.craftAllButton:setVisible(false);
-            self.debugGiveIngredientsButton:setVisible(false);
+            -- self.debugGiveIngredientsButton:setVisible(false);
         end
         -- TODO: Implement more from render.
     end
@@ -458,7 +462,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         end
 
         if recipe ~= self.selectedRecipe then
-            self:refreshIngredientPanel();
+            self:RefreshIngredientPanel();
             self:refreshIngredientList();
             self.selectedRecipe = recipe;
         end
@@ -476,10 +480,9 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         --     end
         self.craftOneButton:setVisible(true);
         self.craftAllButton:setVisible(true);
-        self.debugGiveIngredientsButton:setVisible(getDebug());
-
-        self.debugGiveIngredientsButton:setX(self.craftAllButton:getRight() + 5);
-        self.debugGiveIngredientsButton:setY(pos.y);
+        -- self.debugGiveIngredientsButton:setVisible(getDebug());
+        -- self.debugGiveIngredientsButton:setX(self.craftAllButton:getRight() + 5);
+        -- self.debugGiveIngredientsButton:setY(pos.y);
         self:drawText(getText("IGUI_CraftUI_RequiredItems"), pos.x, pos.y, 1, 1, 1, 1, UIFont.Medium);
 
         pos.y = pos.y + ISCraftingUI.mediumFontHeight + 7;
@@ -488,8 +491,8 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self.ingredientPanel:setY(pos.y);
         self.ingredientPanel:setHeight(self.ingredientListbox.itemheight * 8);
         pos.y = self.ingredientPanel:getBottom();
-
         pos.y = pos.y + 4;
+
         self:RenderRecipeSkills(pos, recipe);
 
         -- Not sure what this does.
@@ -567,14 +570,14 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             self.craftAllButton:setWidthToTitle()
         end
 
-        self.debugGiveIngredientsButton:setX(self.craftAllButton:getRight() + 5)
-        self.debugGiveIngredientsButton:setY(pos.y);  -- TODO: For some reason this button is misaligned.
+        -- self.debugGiveIngredientsButton:setX(self.craftAllButton:getRight() + 5)
+        -- self.debugGiveIngredientsButton:setY(pos.y);  -- TODO: For some reason this button is misaligned.
     end
 
     function ISCraftingUI:RenderEvolvedRecipeDetails(position, recipe)
         self.craftOneButton:setVisible(false);
         self.craftAllButton:setVisible(false);
-        self.debugGiveIngredientsButton:setVisible(false);
+        -- self.debugGiveIngredientsButton:setVisible(false);
 
         -- if selectedItem.evolved and selectedItem.baseItem then
         --     self:drawText(getText("IGUI_CraftUI_BaseItem"), x, y, 1,1,1,1, UIFont.Medium);
@@ -641,7 +644,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         -- y = self.ingredientListbox:getBottom()
     end
 
-    -- function ISCraftingUI:refreshIngredientPanel()
+    -- function ISCraftingUI:RefreshIngredientPanel()
     --     local hasFocus = not self.recipeListHasFocus
     --     self.recipeListHasFocus = true
     --     self.ingredientPanel:setVisible(false)
@@ -737,7 +740,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     --     self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient
     -- end
 
-    function ISCraftingUI:refreshIngredientPanel()
+    function ISCraftingUI:RefreshIngredientPanel()
         local hasFocus = self.recipeListHasFocus;
         self.recipeListHasFocus = true;
         self.ingredientPanel:setVisible(false);
@@ -936,6 +939,14 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 -- ]]
 
+-- TODO: would rather this be an extension for listbox
+function ISCraftingUI:GetListboxSelected(listbox)
+    if #listbox.items == 0 then return nil; end
+    if #listbox.items < listbox.selected then return nil; end
+    if listbox.selected < 1 then return nil; end
+    return listbox.items[listbox.selected];
+end
+
 -- TODO: Update containerList
 function ISCraftingUI:UpdateRecipes()
     --- This following hash table caused, without exaggeration,
@@ -1040,8 +1051,11 @@ function ISCraftingUI:AddCategory(category_name_internal)
 end
 
 function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
+    self.currentCategory_str = self.panel.activeView.name;
+    local s = self.recipe_listbox.selected;
     self.recipe_listbox:clear();
-    self.recipe_listbox:setScrollHeight(0);
+    -- self.recipe_listbox:setScrollHeight(0);
+    self.recipe_listbox.selected = s;
     
     local list = nil;
     if all_b then
@@ -1058,12 +1072,14 @@ function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
     end
 
     -- TODO: Implement filter parsing.
-    -- self.recipe_listbox.items = CDTools:ShallowCopy(list2);
     table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
 end
 
 function ISCraftingUI:Refresh()
-    self:SetDisplayedRecipes("", true);-- TODO: This checkbox doesn't work. self.filterAll:isSelected(1));
+    self:SetDisplayedRecipes("", true)--self.filterAll:isSelected(1));
+    self:RefreshIngredientPanel();
+    -- self:UpdateRecipes();
+    -- self:refreshIngredientList();
     if true then return end;
     local recipeListBox = self:getRecipeListBox();
     local selectedItem = recipeListBox.items[recipeListBox.selected];
@@ -1391,8 +1407,9 @@ function ISCraftingUI:refreshIngredientList()
 end
 
 function ISCraftingUI:onActivateView()
-    local recipeListBox = self:getRecipeListBox()
-    recipeListBox:ensureVisible(recipeListBox.selected);
+    self:Refresh();
+    -- local recipeListBox = self:getRecipeListBox()
+    -- recipeListBox:ensureVisible(recipeListBox.selected);
 end
 
 function ISCraftingUI:sortList() -- sort list with items you can craft in first

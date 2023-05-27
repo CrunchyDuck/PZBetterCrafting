@@ -7,6 +7,8 @@ require "Classes/CDDummyView"
 
 CDDummyView = ISPanelJoypad:derive("CDDummyView");
 CDDummyView.instance = nil;
+CDDummyView.category = "";
+CDDummyView.parent = nil;
 
 function CDDummyView:initialise()
     ISPanelJoypad.initialise(self);
