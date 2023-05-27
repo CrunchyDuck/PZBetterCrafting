@@ -3,12 +3,14 @@
 
 CDSource = {};
 CDSource.baseSource = nil;
+CDSource.recipe = nil;
 CDSource.fullType = nil
 CDSource.items_ar = {};  -- ar[CDSourceItem]
 
 function CDSource:New(recipe, source)
     local o = CDTools:ShallowCopy(CDSource)
     o.baseSource = source;
+    o.recipe = recipe;
 
     for k = 0, source:getItems():size() - 1 do
         local fullType = source:getItems():get(k);

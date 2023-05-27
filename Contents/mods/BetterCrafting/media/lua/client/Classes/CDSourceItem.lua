@@ -1,13 +1,18 @@
 CDSourceItem = {};
-CDSourceItem.baseItem = nil;
+CDSourceItem.recipe = nil;  -- CDRecipe
+CDSourceItem.source = nil;  -- CDSource
+CDSourceItem.baseItem = nil;  -- zombie.inventory.InventoryItem, I think?
 CDSourceItem.count = 0;
 CDSourceItem.texture = nil;
 CDSourceItem.name = "";
 CDSourceItem.fullType = "";
+CDSourceItem.available = true;  -- Not fully sure how this is set, yet.
 
 -- TODO: Finish this bollocks.
 function CDSourceItem:New(recipe, source, item_instance)
     local o = CDTools:ShallowCopy(CDSourceItem);
+    o.recipe = recipe;
+    o.source = source;
     o.baseItem = item_instance;
 
     o.count = source:getCount();

@@ -1,14 +1,16 @@
 require "CDTools"
 
+-- TODO: Index recipe skill.
 CDRecipe = {};
 CDRecipe.category_str = "";
-CDRecipe.baseRecipe = nil;  -- K:zombie.scripting.objects.Recipe
+CDRecipe.baseRecipe = nil;  -- K: zombie.scripting.objects.Recipe
 CDRecipe.items_hs = {};  --   
 -- CDRecipe.product = nil;  -- zombie.scripting.objects.Recipe.Result
 CDRecipe.texture = nil;
 CDRecipe.outputName_str = "";
 CDRecipe.sources_ar = {};  -- ar[CDSource]
 CDRecipe.available_b = false;
+CDRecipe.typesAvailable_hs = {};  -- Filled by the crafting UI... for some reason.
 
 -- Bit gross to give every instance its own copy of static.
 CDRecipe.static = {};
@@ -20,9 +22,9 @@ function CDRecipe:New(recipe, character, containers_ar)
     
     o.baseRecipe = recipe;
     if recipe:getCategory() then
-        o.category = recipe:getCategory();
+        o.category_str = recipe:getCategory();
     else
-        o.category = getText("IGUI_CraftCategory_General");
+        o.category_str = getText("IGUI_CraftCategory_General");
     end
 
     if character then

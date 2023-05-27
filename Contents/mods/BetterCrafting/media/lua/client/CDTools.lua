@@ -39,3 +39,14 @@ function CDTools:TableConcat(t1, t2)
     end
     return t1
 end
+
+-- AHAHAHAHHAHAHAHAHAHAHAHH
+-- THER'ES ONO BULT IN WAY TO COUNT NUM ENTRIES IN DICTIONRARY IN LUA
+-- HAHAAHHAHASDADSHDSADSAHDDS
+function CDTools:CountTable(tab)
+    local i = 0;
+    for _, _ in pairs(tab) do
+        i = i + 1;
+    end
+    return i;
+end
