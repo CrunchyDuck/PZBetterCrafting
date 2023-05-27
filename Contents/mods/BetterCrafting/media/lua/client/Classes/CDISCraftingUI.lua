@@ -276,9 +276,8 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         local position = {};
         position.x = self:getWidth() / 3 + 80;
         position.y = 110;
-        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected];
-        recipe = recipe.item;
-        y = self:RenderRecipeDetails(position, recipe);
+        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
+        self:RenderRecipeDetails(position, recipe);
 
         if not recipe.evolved then
             -- local now = getTimestampMs()
@@ -318,7 +317,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
 
         local a = 0.9;
 
-        if not recipe.available then
+        if not recipe.available_b then
             a = 0.3;
         end
 
@@ -766,6 +765,7 @@ function ISCraftingUI:UpdateRecipes()
     --- It will claim me. But it challenges me to impossible problems, and makes me feel alive.
     ---
     --- Never before have I had to do a writeup about a variable.
+    -- self:getContainers()
     self.recipeCategories_ht = {};
     local recipes = getAllRecipes();  -- Java array
     for i = 0, recipes:size() - 1 do
@@ -851,10 +851,6 @@ function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
     -- TODO: Implement filter parsing.
     -- self.recipe_listbox.items = CDTools:ShallowCopy(list2);
     table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
-end
-
-function ISCraftingUI:ParseFilter(filter_str)
-
 end
 
 function ISCraftingUI:Refresh()
@@ -1293,28 +1289,6 @@ function ISCraftingUI:refreshIngredientList()
         table.insert(self.catListButtons, button);
         y = y + 25;
     end
-end
-
-local function tableSize(table1)
-    if not table1 then return 0 end
-    local count = 0;
-    for _,v in pairs(table1) do
-        count = count + 1;
-    end
-    return count;
-end
-
-local function areTablesDifferent(table1, table2)
-    local size1 = tableSize(table1)
-    local size2 = tableSize(table2)
-    if size1 ~= size2 then return true end
-    if size1 == 0 then return false end
-    for k1,v1 in pairs(table1) do
-        if table2[k1] ~= v1 then
-            return true
-        end
-    end
-    return false
 end
 
 function ISCraftingUI:onActivateView()

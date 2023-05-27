@@ -1,3 +1,8 @@
+-- An item, as it relates to a Source.
+
+--- If I want to improve performance, I might make a base "CDItem",
+--- which CDSourceItem fetches/derives from. Prevents repeatedly making items.
+--- Not sure how it's handled in the java though, so not sure if it's taxing.
 CDSourceItem = {};
 CDSourceItem.recipe = nil;  -- CDRecipe
 CDSourceItem.source = nil;  -- CDSource
