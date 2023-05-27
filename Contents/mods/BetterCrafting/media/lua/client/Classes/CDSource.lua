@@ -6,6 +6,7 @@ CDSource.baseSource = nil;
 CDSource.recipe = nil;
 CDSource.requiredCount_i = 0;
 CDSource.items_ar = {};  -- ar[CDSourceItem]
+CDSource.items_ht = {};  -- ht[fullType_str, CDSourceItem]
 
 local b = false;
 function CDSource:New(recipe, source)
@@ -15,6 +16,7 @@ function CDSource:New(recipe, source)
     -- Originally this was stored on the items rather than the source? why??
     o.requiredCount_i = source:getCount();
 
+    o.items_ar = {};
     for k = 0, source:getItems():size() - 1 do
         local fullType = source:getItems():get(k);
         local item_instance = nil;
