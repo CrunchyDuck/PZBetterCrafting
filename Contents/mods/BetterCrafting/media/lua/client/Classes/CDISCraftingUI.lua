@@ -20,7 +20,12 @@ ISCraftingUI.recipeCategories_ht = {};  -- ht[string, hs[recipe]].
 ISCraftingUI.currentCategory_str = "General";
 ISCraftingUI.categories_hs = {};  -- hs[str]. Used to name and track the tabs that go into panel.
 ISCraftingUI.selectedRecipe = nil;
-
+--- This is effectively my own version of getAvailableItemsAll
+--- So why am I gathering all the items into a table, rather than using the vanilla systems?
+--- I'm making a table so that I can implement my own search to tally up how much of each thing we have.
+--- While slower than the built in way (maybe), this exposes more of the code to modification
+--- The vanilla method is also a confusing mess that doesn't work nicely with my object oriented rewrite.
+ISCraftingUI.availableItems_ht = nil;  -- ht[string, ar[zombie.inventory.InventoryItem]].
 
 -- This should really be stored on an object somewhere, why does it need to be fetched and locally stored?
 ISCraftingUI.fontHeightSmall = getTextManager():getFontFromEnum(UIFont.Small):getLineHeight();
@@ -84,6 +89,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 
     function ISCraftingUI:createChildren()
+        ISCraftingUI.instance = self;
         ISCollapsableWindow.createChildren(self);
         local top_handle_height = self:titleBarHeight();
         local resize_handle_height = self.resizable and self:resizeWidgetHeight() or 0
@@ -631,90 +637,174 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         -- y = self.ingredientListbox:getBottom()
     end
 
+    -- function ISCraftingUI:refreshIngredientPanel()
+    --     local hasFocus = not self.recipeListHasFocus
+    --     self.recipeListHasFocus = true
+    --     self.ingredientPanel:setVisible(false)
+
+    --     local recipeListbox = self:getRecipeListBox()
+    --     if not recipeListbox.items or #recipeListbox.items == 0 or not recipeListbox.items[recipeListbox.selected] then return end
+    --     local selectedItem = recipeListbox.items[recipeListbox.selected].item;
+    --     if not selectedItem or selectedItem.evolved then return end
+
+    --     selectedItem.typesAvailable = self:getAvailableItemsType()
+
+    --     self.recipeListHasFocus = not hasFocus
+    --     self.ingredientPanel:setVisible(true) 
+
+    --     self.ingredientPanel:clear()
+        
+    --     -- Display single-item sources before multi-item sources
+    --     local sortedSources = {}
+    --     for _,source in ipairs(selectedItem.sources) do
+    --         table.insert(sortedSources, source)
+    --     end
+    --     table.sort(sortedSources, function(a,b) return #a.items == 1 and #b.items > 1 end)
+
+    --     for _,source in ipairs(sortedSources) do
+    --         local available = {}
+    --         local unavailable = {}
+
+    --         for _,item in ipairs(source.items) do
+    --             local data = {}
+    --             data.selectedItem = selectedItem
+    --             data.name = item.name
+    --             data.texture = item.texture
+    --             data.fullType = item.fullType
+    --             data.count = item.source.requiredCount_i
+    --             data.recipe = selectedItem.recipe
+    --             data.multiple = #source.items > 1
+    --             if selectedItem.typesAvailable and (not selectedItem.typesAvailable[item.fullType] or selectedItem.typesAvailable[item.fullType] < item.source.requiredCount_i) then
+    --                 table.insert(unavailable, data)
+    --             else
+    --                 table.insert(available, data)
+    --             end
+    --         end
+    --         table.sort(available, function(a,b) return not string.sort(a.name, b.name) end)
+    --         table.sort(unavailable, function(a,b) return not string.sort(a.name, b.name) end)
+
+    --         if #source.items > 1 then
+    --             local data = {}
+    --             data.selectedItem = selectedItem
+    --             data.texture = self.TreeExpanded
+    --             data.multipleHeader = true
+    --             data.available = #available > 0
+    --             self.ingredientPanel:addItem(getText("IGUI_CraftUI_OneOf"), data)
+    --         end
+
+    --         -- Hack for "Dismantle Digital Watch" and similar recipes.
+    --         -- Recipe sources include both left-hand and right-hand versions of the same item.
+    --         -- We only want to display one of them.
+    --         ---[[
+    --         for j=1,#available do
+    --             local item = available[j]
+    --             self:removeExtraClothingItemsFromList(j+1, item, available)
+    --         end
+
+    --         for j=1,#available do
+    --             local item = available[j]
+    --             self:removeExtraClothingItemsFromList(1, item, unavailable)
+    --         end
+
+    --         for j=1,#unavailable do
+    --             local item = unavailable[j]
+    --             self:removeExtraClothingItemsFromList(j+1, item, unavailable)
+    --         end
+    --         --]]
+
+    --         for k,item in ipairs(available) do
+    --             if #source.items > 1 and item.source.requiredCount_i > 1 then
+    --                 self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
+    --             else
+    --                 self.ingredientPanel:addItem(item.name, item)
+    --             end;
+    --         end
+    --         for k,item in ipairs(unavailable) do
+    --             if #source.items > 1 and item.source.requiredCount_i > 1 then
+    --                 self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
+    --             else
+    --                 self.ingredientPanel:addItem(item.name, item)
+    --             end
+    --         end
+    --     end
+
+    --     self.refreshTypesAvailableMS = getTimestampMs()
+
+    --     self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient
+    -- end
+
     function ISCraftingUI:refreshIngredientPanel()
-        local hasFocus = not self.recipeListHasFocus
-        self.recipeListHasFocus = true
-        self.ingredientPanel:setVisible(false)
+        local hasFocus = self.recipeListHasFocus;
+        self.recipeListHasFocus = true;
+        self.ingredientPanel:setVisible(false);
 
-        local recipeListbox = self:getRecipeListBox()
-        if not recipeListbox.items or #recipeListbox.items == 0 or not recipeListbox.items[recipeListbox.selected] then return end
-        local selectedItem = recipeListbox.items[recipeListbox.selected].item;
-        if not selectedItem or selectedItem.evolved then return end
+        -- Should something be getting displayed?
+        if not self.recipe_listbox.items or #self.recipe_listbox.items == 0 or not self.recipe_listbox.items[self.recipe_listbox.selected] then return end
+        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
+        if not recipe or recipe.evolved then return end
 
-        selectedItem.typesAvailable = self:getAvailableItemsType()
-
-        self.recipeListHasFocus = not hasFocus
+        self.recipeListHasFocus = hasFocus;
         self.ingredientPanel:setVisible(true) 
 
+        recipe.typesAvailable_hs = self:getAvailableItemsType();
         self.ingredientPanel:clear()
-        
-        -- Display single-item sources before multi-item sources
         local sortedSources = {}
-        for _,source in ipairs(selectedItem.sources) do
+        for _, source in ipairs(recipe.sources_ar) do
             table.insert(sortedSources, source)
         end
-        table.sort(sortedSources, function(a,b) return #a.items == 1 and #b.items > 1 end)
+        table.sort(sortedSources, function(a,b) return #a.items_ar == 1 and #b.items_ar > 1 end)
 
-        for _,source in ipairs(sortedSources) do
+        for _, source in ipairs(sortedSources) do
             local available = {}
             local unavailable = {}
 
-            for _,item in ipairs(source.items) do
-                local data = {}
-                data.selectedItem = selectedItem
-                data.name = item.name
-                data.texture = item.texture
-                data.fullType = item.fullType
-                data.count = item.source.requiredCount_i
-                data.recipe = selectedItem.recipe
-                data.multiple = #source.items > 1
-                if selectedItem.typesAvailable and (not selectedItem.typesAvailable[item.fullType] or selectedItem.typesAvailable[item.fullType] < item.source.requiredCount_i) then
-                    table.insert(unavailable, data)
+            for _, source_item in ipairs(source.items_ar) do
+                if source_item == nil then
+                end
+                if source_item.available_b then --recipe_types_available and (not recipe_types_available[source_item.fullType] or recipe_types_available[source_item.fullType] < source_item.source.requiredCount_i) then
+                    table.insert(available, source_item);
                 else
-                    table.insert(available, data)
+                    table.insert(unavailable, source_item);
                 end
             end
-            table.sort(available, function(a,b) return not string.sort(a.name, b.name) end)
-            table.sort(unavailable, function(a,b) return not string.sort(a.name, b.name) end)
 
-            if #source.items > 1 then
-                local data = {}
-                data.selectedItem = selectedItem
-                data.texture = self.TreeExpanded
-                data.multipleHeader = true
-                data.available = #available > 0
-                self.ingredientPanel:addItem(getText("IGUI_CraftUI_OneOf"), data)
+            -- Drop down for "One of these items"
+            if #source.items_ar > 1 then
+                local dropdown = {}
+                dropdown.recipe = recipe
+                dropdown.texture = self.TreeExpanded
+                dropdown.multipleHeader = true
+                dropdown.available_b = #available > 0;
+                self.ingredientPanel:addItem(getText("IGUI_CraftUI_OneOf"), dropdown)
             end
 
-            -- Hack for "Dismantle Digital Watch" and similar recipes.
-            -- Recipe sources include both left-hand and right-hand versions of the same item.
-            -- We only want to display one of them.
-            ---[[
-            for j=1,#available do
-                local item = available[j]
-                self:removeExtraClothingItemsFromList(j+1, item, available)
-            end
+            -- What in blazes does this do?
+            -- for j=1,#available do
+            --     local item = available[j]
+            --     self:removeExtraClothingItemsFromList(j+1, item, available)
+            -- end
+            -- for j=1,#available do
+            --     local item = available[j]
+            --     self:removeExtraClothingItemsFromList(1, item, unavailable)
+            -- end
+            -- for j=1,#unavailable do
+            --     local item = unavailable[j]
+            --     self:removeExtraClothingItemsFromList(j+1, item, unavailable)
+            -- end
 
-            for j=1,#available do
-                local item = available[j]
-                self:removeExtraClothingItemsFromList(1, item, unavailable)
-            end
+            table.sort(available, function(a, b) return not string.sort(a.name, b.name) end)
+            table.sort(unavailable, function(a, b) return not string.sort(a.name, b.name) end)
 
-            for j=1,#unavailable do
-                local item = unavailable[j]
-                self:removeExtraClothingItemsFromList(j+1, item, unavailable)
-            end
-            --]]
-
-            for k,item in ipairs(available) do
-                if #source.items > 1 and item.source.requiredCount_i > 1 then
+            for _, item in ipairs(available) do
+                if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
                     self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
                 else
                     self.ingredientPanel:addItem(item.name, item)
-                end;
+                end
             end
-            for k,item in ipairs(unavailable) do
-                if #source.items > 1 and item.source.requiredCount_i > 1 then
+
+            for _, item in ipairs(unavailable) do
+                if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
                     self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
                 else
                     self.ingredientPanel:addItem(item.name, item)
@@ -722,9 +812,52 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             end
         end
 
-        self.refreshTypesAvailableMS = getTimestampMs()
+        self.refreshTypesAvailableMS = getTimestampMs();
+        self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient;
+    end
 
-        self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient
+    function ISCraftingUI.drawNonEvolvedIngredient(ingredient_panel, y, item, alt)
+        if y + ingredient_panel:getYScroll() >= ingredient_panel.height then return y + ingredient_panel.itemheight end
+        if y + ingredient_panel.itemheight + ingredient_panel:getYScroll() <= 0 then return y + ingredient_panel.itemheight end
+
+        if not ingredient_panel.parent.recipeListHasFocus and ingredient_panel.selected == item.index then
+            ingredient_panel:drawRectBorder(1, y, ingredient_panel:getWidth()-2, ingredient_panel.itemheight, 1.0, 0.5, 0.5, 0.5);
+        end
+
+        if item.item.multipleHeader then
+            local r,g,b = 1,1,1
+            if not item.item.available_b then
+                r,g,b = 0.54,0.54,0.54
+            end
+            ingredient_panel:drawText(item.text, 12, y + 2, r, g, b, 1, ingredient_panel.font)
+            ingredient_panel:drawTexture(item.item.texture, 4, y + (item.height - item.item.texture:getHeight()) / 2 - 2, 1,1,1,1)
+        else
+            local r,g,b;
+            local r2,g2,b2,a2;
+            -- TODO: These should be indented, but aren't for some reason.
+            -- local typesAvailable = item.item.recipe.typesAvailable_hs;
+            if item.item.available_b then --typesAvailable and (not typesAvailable[item.item.fullType] or typesAvailable[item.item.fullType] < item.item.source.requiredCount_i) then
+                r,g,b = 1,1,1;
+                r2,g2,b2,a2 = 1,1,1,0.9;
+            else
+                r,g,b = 0.54,0.54,0.54;
+                r2,g2,b2,a2 = 1,1,1,0.3;
+            end
+
+            local imgW = 20
+            local imgH = 20
+            local dx = 6 + (item.item.multiple and 10 or 0)
+            
+            ingredient_panel:drawText(item.text, dx + imgW + 4, y + (item.height - ISCraftingUI.smallFontHeight) / 2, r, g, b, 1, ingredient_panel.font)
+            
+            if item.item.texture then
+                local texWidth = item.item.texture:getWidth()
+                local texHeight = item.item.texture:getHeight()
+                ingredient_panel:drawTextureScaledAspect(item.item.texture, dx, y + (ingredient_panel.itemheight - imgH) / 2, 20, 20, a2,r2,g2,b2)
+            end
+        end
+
+        return y + ingredient_panel.itemheight;
     end
 -- ]]
 
@@ -765,6 +898,8 @@ function ISCraftingUI:UpdateRecipes()
     --- It will claim me. But it challenges me to impossible problems, and makes me feel alive.
     ---
     --- Never before have I had to do a writeup about a variable.
+    -- ISCraftingUI.instance = self;
+    self:getContainers();
     self.recipeCategories_ht = {};
     local recipes = getAllRecipes();  -- Java array
     for i = 0, recipes:size() - 1 do
@@ -853,7 +988,7 @@ function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
 end
 
 function ISCraftingUI:Refresh()
-    self:SetDisplayedRecipes("", false);-- TODO: This checkbox doesn't work. self.filterAll:isSelected(1));
+    self:SetDisplayedRecipes("", true);-- TODO: This checkbox doesn't work. self.filterAll:isSelected(1));
     if true then return end;
     local recipeListBox = self:getRecipeListBox();
     local selectedItem = recipeListBox.items[recipeListBox.selected];
@@ -919,8 +1054,8 @@ function ISCraftingUI:Refresh()
     self:refreshIngredientList()
 end
 
-function ISCraftingUI:isWaterSource(item, count)
-    return instanceof(item, "DrainableComboItem") and item:isWaterSource() and item:getDrainableUsesInt() >= count
+function ISCraftingUI:isWaterSource(item)
+    return instanceof(item, "DrainableComboItem") and item:isWaterSource()-- and item:getDrainableUsesInt() >= count
 end
 
 function ISCraftingUI:transferItems()
@@ -996,6 +1131,36 @@ function ISCraftingUI:getContainers()
     for i,v in ipairs(getPlayerLoot(self.playerNum).inventoryPane.inventoryPage.backpacks) do
         self.containerList:add(v.inventory);
     end
+
+    self.availableItems_ht = {};
+    for i = 0, self.containerList:size() - 1 do
+        local container = self.containerList:get(i);
+        local inventory_items = container:getAllEval(function(a) return true end);
+        for j = 0, inventory_items:size() - 1 do
+            local item = inventory_items:get(j);
+            local full_type = item:getFullType()
+
+            -- -- TODO: I'm not sure this is 1:one with the original code. Test it.
+            -- if self:isWaterSource(item, source:getCount()) then
+            --     result["Water"] = (result["Water"] or 0) + item:getDrainableUsesInt();
+            -- elseif sourceItemTypes[item:getFullType()] then
+            --     local count = 1
+            --     if not source:isDestroy() and item:IsDrainable() then
+            --         count = item:getDrainableUsesInt()
+            --     end
+            --     if not source:isDestroy() and instanceof(item, "Food") then
+            --         if source:getUse() > 0 then
+            --             count = -item:getHungerChange() * 100
+            --         end
+            --     end
+            --     result[item:getFullType()] = (result[item:getFullType()] or 0) + count;
+            -- end
+            if self.availableItems_ht[full_type] == nil then
+                self.availableItems_ht[full_type] = {};
+            end
+            table.insert(self.availableItems_ht[full_type], item);
+        end
+    end
 end
 
 function ISCraftingUI:refreshTickBox()
@@ -1009,49 +1174,6 @@ function ISCraftingUI:refreshTickBox()
             self.tickBox:setSelected(m, true)
         end
     end
-end
-
-function ISCraftingUI:drawNonEvolvedIngredient(y, item, alt)
-    if y + self:getYScroll() >= self.height then return y + self.itemheight end
-    if y + self.itemheight + self:getYScroll() <= 0 then return y + self.itemheight end
-
-    if not self.parent.recipeListHasFocus and self.selected == item.index then
-        self:drawRectBorder(1, y, self:getWidth()-2, self.itemheight, 1.0, 0.5, 0.5, 0.5);
-    end
-
-    if item.item.multipleHeader then
-        local r,g,b = 1,1,1
-        if not item.item.available then
-            r,g,b = 0.54,0.54,0.54
-        end
-        self:drawText(item.text, 12, y + 2, r, g, b, 1, self.font)
-        self:drawTexture(item.item.texture, 4, y + (item.height - item.item.texture:getHeight()) / 2 - 2, 1,1,1,1)
-    else
-        local r,g,b;
-        local r2,g2,b2,a2;
-        local typesAvailable = item.item.recipe.typesAvailable_hs;
-        if typesAvailable and (not typesAvailable[item.item.fullType] or typesAvailable[item.item.fullType] < item.item.source.requiredCount_i) then
-            r,g,b = 0.54,0.54,0.54;
-            r2,g2,b2,a2 = 1,1,1,0.3;
-        else
-            r,g,b = 1,1,1;
-            r2,g2,b2,a2 = 1,1,1,0.9;
-        end
-
-        local imgW = 20
-        local imgH = 20
-        local dx = 6 + (item.item.multiple and 10 or 0)
-        
-        self:drawText(item.text, dx + imgW + 4, y + (item.height - ISCraftingUI.smallFontHeight) / 2, r, g, b, 1, self.font)
-        
-        if item.item.texture then
-            local texWidth = item.item.texture:getWidth()
-            local texHeight = item.item.texture:getHeight()
-            self:drawTextureScaledAspect(item.item.texture, dx, y + (self.itemheight - imgH) / 2, 20, 20, a2,r2,g2,b2)
-        end
-    end
-
-    return y + self.itemheight;
 end
 
 function ISCraftingUI:isExtraClothingItemOf(item1, item2)
@@ -1081,89 +1203,6 @@ function ISCraftingUI:removeExtraClothingItemsFromList(index, item, itemList)
             table.remove(itemList, k)
         end
     end
-end
-
-function ISCraftingUI:refreshIngredientPanel()
-    local hasFocus = self.recipeListHasFocus;
-    self.recipeListHasFocus = true;
-    self.ingredientPanel:setVisible(false);
-
-    -- Should something be getting displayed?
-    if not self.recipe_listbox.items or #self.recipe_listbox.items == 0 or not self.recipe_listbox.items[self.recipe_listbox.selected] then return end
-    local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
-    if not recipe or recipe.evolved then return end
-
-    self.recipeListHasFocus = hasFocus;
-    self.ingredientPanel:setVisible(true) 
-
-    recipe.typesAvailable_hs = self:getAvailableItemsType();
-    self.ingredientPanel:clear()
-    local sortedSources = {}
-    for _, source in ipairs(recipe.sources_ar) do
-        table.insert(sortedSources, source)
-    end
-    table.sort(sortedSources, function(a,b) return #a.items_ar == 1 and #b.items_ar > 1 end)
-
-    for _, source in ipairs(sortedSources) do
-        local available = {}
-        local unavailable = {}
-
-        for _, source_item in ipairs(source.items_ar) do
-            if source_item == nil then
-            end
-            if recipe_types_available and (not recipe_types_available[source_item.fullType] or recipe_types_available[source_item.fullType] < source_item.source.requiredCount_i) then
-                table.insert(unavailable, source_item);
-            else
-                table.insert(available, source_item);
-            end
-        end
-
-        -- Drop down for "One of these items"
-        if #source.items_ar > 1 then
-            local dropdown = {}
-            dropdown.recipe = recipe
-            dropdown.texture = self.TreeExpanded
-            dropdown.multipleHeader = true
-            dropdown.available = #available > 0;
-            self.ingredientPanel:addItem(getText("IGUI_CraftUI_OneOf"), dropdown)
-        end
-
-        -- What in blazes does this do?
-        -- for j=1,#available do
-        --     local item = available[j]
-        --     self:removeExtraClothingItemsFromList(j+1, item, available)
-        -- end
-        -- for j=1,#available do
-        --     local item = available[j]
-        --     self:removeExtraClothingItemsFromList(1, item, unavailable)
-        -- end
-        -- for j=1,#unavailable do
-        --     local item = unavailable[j]
-        --     self:removeExtraClothingItemsFromList(j+1, item, unavailable)
-        -- end
-
-        table.sort(available, function(a, b) return not string.sort(a.name, b.name) end)
-        table.sort(unavailable, function(a, b) return not string.sort(a.name, b.name) end)
-
-        for _, item in ipairs(available) do
-            if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
-                self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-            else
-                self.ingredientPanel:addItem(item.name, item)
-            end
-        end
-
-        for _, item in ipairs(unavailable) do
-            if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
-                self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-            else
-                self.ingredientPanel:addItem(item.name, item)
-            end
-        end
-    end
-
-    self.refreshTypesAvailableMS = getTimestampMs();
-    self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient;
 end
 
 function ISCraftingUI:drawEvolvedIngredient(y, item, alt)

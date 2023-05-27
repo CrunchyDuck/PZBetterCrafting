@@ -7,8 +7,8 @@ CDSource.recipe = nil;
 CDSource.requiredCount_i = 0;
 CDSource.items_ar = {};  -- ar[CDSourceItem]
 CDSource.items_ht = {};  -- ht[fullType_str, CDSourceItem]
+CDSource.available_b = false;
 
-local b = false;
 function CDSource:New(recipe, source)
     local o = CDTools:ShallowCopy(CDSource)
     o.baseSource = source;
@@ -32,6 +32,9 @@ function CDSource:New(recipe, source)
         if item_instance then
             local cditem = CDSourceItem:New(recipe, o, item_instance);
             table.insert(o.items_ar, cditem);
+            if cditem.available_b then
+                o.available_b = true;
+            end
         end
     end
 
