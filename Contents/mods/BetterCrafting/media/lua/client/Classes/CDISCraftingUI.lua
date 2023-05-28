@@ -7,6 +7,9 @@
 -- TODO: Index evolved recipes.
 -- TODO: Favourited recipes.
 -- TODO: If the recipe list changes, try keep the thing the player had selected, selected.
+-- TODO: Sub mod that fixes some broken recipes and groups up other recipes.
+-- TODO: Mention no controller support on the mod page.
+-- TODO: Fix side of ingredients flickering if no scroll bar.
 require "ISUI/ISCraftingUI"
 require "CDRecipe"
 
@@ -74,6 +77,7 @@ ISCraftingUI.selectedRecipe = nil;
 --- While slower than the built in way (maybe), this exposes more of the code to modification
 --- The vanilla method is also a confusing mess that doesn't work nicely with my object oriented rewrite.
 ISCraftingUI.availableItems_ht = nil;  -- ht[string, ar[zombie.inventory.InventoryItem]].
+ISCraftingUI.lastFilter = "";
 
 -- [[ UI variables
     ISCraftingUI.panel = nil;
@@ -510,7 +514,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         if math.fmod(self.frameCounter_i, 60) == 0 then
             self:UpdateKnownRecipes();
         end
-        self:FilterRecipes("", self.filterAll:isSelected(1));
+        self:UpdateRecipeFilter();
         self:UpdateRecipesAvailable();
         self:UpdateSelectedRecipe();
         
@@ -605,6 +609,38 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
                 self.recipeCategories_ht[r.category_str][r] = true;
             end
         end
+    end
+
+    function ISCraftingUI:UpdateRecipeFilter()
+        local filter_str = string.trim(self.filterEntry:getInternalText());
+        local all_b = self.filterAll:isSelected(1)
+        
+        self.currentCategory_str = self.panel.activeView.name;
+        local s = self.recipe_listbox.selected;
+        self.recipe_listbox:clear();
+        -- self.recipe_listbox:setScrollHeight(0);
+        self.recipe_listbox.selected = s;
+        
+        local recipes_list = nil;
+        if all_b then
+            recipes_list = {};
+            for _, recipe in pairs(self.allRecipes_ht) do
+                recipes_list[recipe] = true;
+            end
+        else
+            recipes_list = self.recipeCategories_ht[self.currentCategory_str];
+        end
+        if recipes_list == nil then return; end
+
+        if filter_str ~= "" then
+            recipes_list = self:FilterRecipes(filter_str, recipes_list);
+        end
+    
+        for k, _ in pairs(recipes_list) do
+            self.recipe_listbox:addItem(k.outputName_str, k);
+        end
+        table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
+    
     end
 
     function ISCraftingUI:UpdateAvailableItems()
@@ -1081,6 +1117,64 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 -- ]]
 
+function ISCraftingUI:FilterRecipes(filter_str, recipe_hs)
+    if filter_str == self.last_filter then
+        return recipe_ar;
+    end
+    local name_filter = "";
+    local ingredients_filter = "";
+    local operator = "";
+    local content = "";
+
+    self.lastFilter = filter_str;
+    filter_str = filter_str:trim():lower();
+
+    local s = CDTools:SplitString(filter_str, ":");
+    if #s > 1 then
+        operator = s[1];
+        content = s[2];
+    elseif #s == 1 then
+        content = s[1];
+    end
+
+    if operator == "" then
+        name_filter = content;
+    elseif operator == "c" then
+        ingredients_filter = content;
+    end
+
+    if name_filter == "" and ingredients_filter == "" then
+        return recipe_ar;
+    end
+
+    local new_recipes = {};
+    for recipe, _ in pairs(recipe_hs) do
+        if name_filter ~= "" then
+            if recipe.outputName_str:lower():contains(name_filter) then
+                new_recipes[recipe] = true;
+            end
+        elseif ingredients_filter ~= "" then
+            local found_ingredient = false;
+
+            for _, source in pairs(recipe.sources_ar) do
+                for _, item in pairs(source.items_ar) do
+                    if item.name:lower():contains(ingredients_filter) then
+                        new_recipes[recipe] = true;
+                        found_ingredient = true;
+                        break;
+                    end
+                end
+
+                if found_ingredient then
+                    break;
+                end
+            end
+        end
+    end
+
+    return new_recipes;
+end
+
 function ISCraftingUI:AddCategory(category_name_internal)
     if self.categories_hs[category_name_internal] ~= nil then
         print("CDCrafting ERROR: Tried to create a category that already exists!");
@@ -1096,34 +1190,6 @@ function ISCraftingUI:AddCategory(category_name_internal)
     cat:initialise();
     self.panel:addView(cat_name, cat);
     cat.infoText = getText("UI_CraftingUI");
-end
-
-function ISCraftingUI:FilterRecipes(filter_str, all_b)
-    self.currentCategory_str = self.panel.activeView.name;
-    local s = self.recipe_listbox.selected;
-    self.recipe_listbox:clear();
-    -- self.recipe_listbox:setScrollHeight(0);
-    self.recipe_listbox.selected = s;
-    
-    local list = nil;
-    if all_b then
-        list = {};
-        for _, recipe in pairs(self.allRecipes_ht) do
-            list[recipe] = true;
-        end
-    else
-        list = self.recipeCategories_ht[self.currentCategory_str];
-    end
-    if list == nil then
-        return;
-    end
-
-    for k, _ in pairs(list) do
-        self.recipe_listbox:addItem(k.outputName_str, k);
-    end
-
-    -- TODO: Implement filter parsing.
-    table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
 end
 
 function ISCraftingUI:isWaterSource(item)
