@@ -104,7 +104,16 @@ function CDSourceItem:UpdateAvailability(detailed_b)
                 count = -item:getHungerChange() * 100
             end
         end
+
+        -- Not fully sure how onTest and onCanPerform differ besides their inputs.
         if self.recipe.onTest ~= nil and not self.recipe.onTest(item, self.recipe.resultItem) then
+            count = 0;
+        end
+        --- I thought this was broken at first because I wasn't able to craft the "slice pizza" recipe
+        --- It turns out, that's totally vanilla behaviour!
+        --- Slice pizza has an inverted check, and it checks if the knife is cooked. (It isn't.)
+        --- Muffins are also broken! But I don't quite know why.
+        if self.recipe.onCanPerform ~= nil and not self.recipe.onCanPerform(self.recipe.baseRecipe, getPlayer(), item) then
             count = 0;
         end
 

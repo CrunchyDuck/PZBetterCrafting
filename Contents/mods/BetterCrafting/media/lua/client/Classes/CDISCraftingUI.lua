@@ -1017,7 +1017,10 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
         if recipe.evolved then return; end
         -- TODO: Implement my logic for recipe validity.
-        if not RecipeManager.IsRecipeValid(recipe.baseRecipe, self.character, nil, self.containerList) then return; end
+        if not RecipeManager.IsRecipeValid(recipe.baseRecipe, self.character, nil, self.containerList) then
+            print("CDDebug: Recipe marked as valid, but was actually invalid!");
+            return;
+        end
         if not getPlayer() then return; end
 
         local itemsUsed = self:transferItems();

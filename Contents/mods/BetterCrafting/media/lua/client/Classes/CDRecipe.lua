@@ -4,11 +4,12 @@ require "CDTools"
 CDRecipe = {};
 CDRecipe.category_str = "";
 CDRecipe.baseRecipe = nil;  -- zombie.scripting.objects.Recipe
+CDRecipe.resultItem = nil;
 CDRecipe.texture = nil;
 CDRecipe.outputName_str = "";
 CDRecipe.sources_ar = {};  -- ar[CDSource]
 CDRecipe.onTest = nil;
-CDRecipe.resultItem = nil;
+CDRecipe.onCanPerform = nil;
 
 CDRecipe.available_b = false;
 CDRecipe.detailed_b = false;  -- A non-detailed recipe only checks enough to figure out if it is unavailable.
@@ -33,6 +34,9 @@ function CDRecipe:New(recipe)
 
     if recipe:getLuaTest() ~= nil then
         o.onTest = CDTools:FindGlobal(recipe:getLuaTest());
+    end
+    if recipe:getCanPerform() ~= nil then
+        o.onCanPerform = CDTools:FindGlobal(recipe:getCanPerform());
     end
 
     o.resultItem = o:GetItemInstance(recipe:getResult():getFullType());
