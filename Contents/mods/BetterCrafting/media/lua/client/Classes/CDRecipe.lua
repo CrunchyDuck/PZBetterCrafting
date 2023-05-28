@@ -3,24 +3,26 @@ require "CDTools"
 -- TODO: Index recipe skill.
 CDRecipe = {};
 CDRecipe.category_str = "";
-CDRecipe.baseRecipe = nil;  -- K: zombie.scripting.objects.Recipe
-CDRecipe.items_hs = {};  --   
--- CDRecipe.product = nil;  -- zombie.scripting.objects.Recipe.Result
+CDRecipe.baseRecipe = nil;  -- zombie.scripting.objects.Recipe
 CDRecipe.texture = nil;
 CDRecipe.outputName_str = "";
 CDRecipe.sources_ar = {};  -- ar[CDSource]
-CDRecipe.available_b = false;
-CDRecipe.typesAvailable_hs = {};  -- Filled by the crafting UI... for some reason.
 CDRecipe.onTest = nil;
 CDRecipe.resultItem = nil;
 
--- Bit gross to give every instance its own copy of static.
+CDRecipe.available_b = false;
+CDRecipe.detailed_b = false;  -- A non-detailed recipe only checks enough to figure out if it is unavailable.
+CDRecipe.availableChanged_b = false;  -- Whether this recipe's state changed.
+CDRecipe.sourcesChanged_b = false;  -- Whether a source, or any of its items, changed. Only updated for detailed searches.
+CDRecipe.anyChange_b = false;
+
 CDRecipe.static = {};
 CDRecipe.static.itemInstances_ht = {};
 
 -- From ISCraftingUI:populateRecipesList
-function CDRecipe:New(recipe, character, containers_ar)
+function CDRecipe:New(recipe)
     o = CDTools:ShallowCopy(CDRecipe);
+    o.sources_ar = {};
     
     o.baseRecipe = recipe;
     if recipe:getCategory() then
@@ -33,22 +35,7 @@ function CDRecipe:New(recipe, character, containers_ar)
         o.onTest = CDTools:FindGlobal(recipe:getLuaTest());
     end
 
-    if character then
-        -- This works fine, but to stress test my mod I'm using my method.
-        -- o.available_b = RecipeManager.IsRecipeValid(recipe, character, nil, containers_ar);
-
-        -- local modData = character:getModData();
-        -- if modData[self:getFavoriteModDataLocalString(recipe)] or false then  -- Update the favorite list and save backward compatibility
-        --     --table.remove(modData, self:getFavoriteModDataLocalString(recipe));
-        --     modData[self:getFavoriteModDataString(recipe)] = true;
-        -- end
-        -- newItem.favorite = modData[self:getFavoriteModDataString(recipe)] or false;
-    end
-    -- if newItem.favorite then
-    --     table.insert(self.recipesList[getText("IGUI_CraftCategory_Favorite")], newItem);
-    -- end
-
-    o.resultItem = self:GetItemInstance(recipe:getResult():getFullType());
+    o.resultItem = o:GetItemInstance(recipe:getResult():getFullType());
     -- When is this ever false?
     if o.resultItem then
         o.texture = o.resultItem:getTex();
@@ -59,35 +46,57 @@ function CDRecipe:New(recipe, character, containers_ar)
         end
     end
 
-    o.sources_ar = {};
-    for x = 0, recipe:getSource():size() - 1 do
-        local source = CDSource:New(o, recipe:getSource():get(x));  -- zombie.scripting.objects.Recipe.Source
+    for i = 0, recipe:getSource():size() - 1 do
+        local source = CDSource:New(o, recipe:getSource():get(i));  -- zombie.scripting.objects.Recipe.Source
         table.insert(o.sources_ar, source);
-
-        if x == 0 then
-            o.available_b = true;
-        end
-        o.available_b = o.available_b and source.available_b;
     end
-
-    -- o.product = recipe:getResult();
     return o;
 end
 
-function CDRecipe:CompareTo(other)
-    -- Compare items
-    for k, _ in pairs(self.items_hs) do
-        if other.items_hs[k] == nil then
-            return false;
+-- Returns true if a state happened, false if not.
+-- In non-detailed mode, it will only return "true" if the recipe state changed.
+function CDRecipe:UpdateAvailability(detailed_b)
+    self.detailed_b = detailed_b;
+    local last_available = self.available_b;
+    self.available_b = true;
+    self.availableChanged_b = false;
+    self.sourcesChanged_b = false;
+    self.anyChange_b = false;
+
+    for i, source in pairs(self.sources_ar) do
+        source:UpdateAvailability(detailed_b);
+        self.available_b = self.available_b and source.available_b;
+        
+        if source.anyChange_b then
+            self.sourcesChanged_b = true;
+            self.anyChange_b = true;
+        end
+
+        -- Recipes require all sources to be valid to use.
+        if not detailed_b and not self.available_b then
+            break;
         end
     end
 
-    -- TOOD: Compare product
-    return true;
+    if self.available_b ~= last_available then
+        self.availableChanged_b = true;
+        self.anyChange_b = true;
+    end
+    return;
 end
 
-function CDRecipe:SearchComponent(name_str)
+-- From ISCraftingUI:GetItemInstance
+function CDRecipe:GetItemInstance(type)
+    local item_instance = CDRecipe.static.itemInstances_ht[type];
+    if item_instance then return item_instance end;
 
+    item_instance = InventoryItemFactory.CreateItem(type);
+    -- Shouldn't this break if item_instance is nil?
+    if item_instance then
+        CDRecipe.static.itemInstances_ht[type] = item_instance;
+        CDRecipe.static.itemInstances_ht[item_instance:getFullType()] = item_instance;  -- I don't understand why this is needed.
+    end
+    return item_instance;
 end
 
 function CDRecipe.SortFromListbox(a_listboxElement, b_listboxElement)
@@ -104,18 +113,4 @@ function CDRecipe.SortFromListbox(a_listboxElement, b_listboxElement)
 
     -- Sort alphabetically
     return not string.sort(a.baseRecipe:getName(), b.baseRecipe:getName())
-end
-
--- From ISCraftingUI:GetItemInstance
-function CDRecipe:GetItemInstance(type)
-    local item_instance = self.static.itemInstances_ht[type];
-    if item_instance then return item_instance end;
-
-    item_instance = InventoryItemFactory.CreateItem(type);
-    -- Shouldn't this break if item_instance is nil?
-    if item_instance then
-        self.static.itemInstances_ht[type] = item_instance;
-        self.static.itemInstances_ht[item_instance:getFullType()] = item_instance;  -- I don't understand why this is needed.
-    end
-    return item_instance;
 end

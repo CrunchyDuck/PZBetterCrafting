@@ -3,7 +3,12 @@
 -- TODO: Show items that need to be unfrozen/cooked below the available items.
 -- TODO: Test if getPlayer() can replace self.character
 -- TODO: "Minimal mode", which displays recipes in a text-only format (akin to CDDA)
+-- TODO: Hiding recipes.
+-- TODO: Index evolved recipes.
+-- TODO: Favourited recipes.
+-- TODO: If the recipe list changes, try keep the thing the player had selected, selected.
 require "ISUI/ISCraftingUI"
+require "CDRecipe"
 
 ISCraftingUI = ISCollapsableWindow:derive("ISCraftingUI");
 -- Singleton.
@@ -19,7 +24,46 @@ ISCraftingUI.rightCategory = Keyboard.KEY_RIGHT;
 ISCraftingUI.upArrow = Keyboard.KEY_UP;
 ISCraftingUI.downArrow = Keyboard.KEY_DOWN;
 
-ISCraftingUI.allRecipes_hs = {};  -- hs[recipe]. Technically just all known recipes, but this is snappier.
+ISCraftingUI.frameCounter_i = 0;
+ISCraftingUI.baseRecipes_ar = {};  -- hs[zombie.scripting.objects.Recipe].
+ISCraftingUI.allRecipes_ht = {};  -- ht[zombie.scripting.objects.Recipe, recipe]. Technically just all known recipes, but this is snappier.
+-- [[ rant
+    --- This following hash table caused, without exaggeration,
+    --- 3 days of on-off bug fixing and insanity spiralling to get working.
+    --- The problem was simple: I could not iterate over the hash table.
+    ---
+    --- Because of the dogshit error checking and batshit edge cases in lua,
+    --- I checked just about every possible route before finding the answer.
+    --- I have never felt so destitute over a piece of code as I have in Lua.
+    --- I could find no forum posts detailing this, no documentation outlining this.
+    ---
+    --- In fixing this, I tried something simple: Count the number of entries in a dictionary.
+    --- It kept returning 0.
+    --- Even when I expressly put a key in that should get counted - ht["test"] = "testval";
+    --- So as a last ditch, I tried first clearing the table, adding my test, and then counting.
+    --- ht = {}; ht["test"] = "testval";
+    --- And it worked. It should not have worked.
+    ---
+    --- I cannot express the myriad of swirling emotions that erupted,
+    --- compounding on an already quite terrible day.
+    ---
+    --- For a while I thought I might have, somehow, somewhere, corrupted the compiler.
+    --- This behaviour was so far beyond what I expected of any programming language,
+    --- I believed the only possibility was that it was not in the language.
+    ---
+    --- The answer?
+    --- I had been accidentally putting null values into my hash table here.
+    --- When a table has "null" as a key, it REFUSES to be iterated over past null.
+    --- It will throw no errors, and you can still access those keys by directly checking.
+    --- But iteration will not work.
+    ---
+    --- I loathe this language. And yet, that is exactly why I am here.
+    --- In no other language would I be presented with a problem so concisely complex as this.
+    --- Lua, and this codebase, is like being on the front lines of an apocalyptic war.
+    --- It will claim me. But it challenges me to impossible problems, and makes me feel alive.
+    ---
+    --- Never before have I had to do a writeup about a variable.
+-- ]]
 ISCraftingUI.recipeCategories_ht = {};  -- ht[string, hs[recipe]].
 ISCraftingUI.currentCategory_str = "General";
 ISCraftingUI.categories_hs = {};  -- hs[str]. Used to name and track the tabs that go into panel.
@@ -30,6 +74,26 @@ ISCraftingUI.selectedRecipe = nil;
 --- While slower than the built in way (maybe), this exposes more of the code to modification
 --- The vanilla method is also a confusing mess that doesn't work nicely with my object oriented rewrite.
 ISCraftingUI.availableItems_ht = nil;  -- ht[string, ar[zombie.inventory.InventoryItem]].
+
+-- [[ UI variables
+    ISCraftingUI.panel = nil;
+    ISCraftingUI.craftOneButton = nil;
+    ISCraftingUI.craftAllButton = nil;
+    ISCraftingUI.addIngredientButton = nil
+    
+    ISCraftingUI.taskLabel = nil
+
+    ISCraftingUI.recipe_listbox = nil
+    ISCraftingUI.hasRendererIngredients_b = false;
+    ISCraftingUI.ingredientPanel = nil
+    ISCraftingUI.ingredientListbox = nil
+
+    ISCraftingUI.noteText = nil
+    ISCraftingUI.keysText = nil
+    ISCraftingUI.filterLabel = nil
+    ISCraftingUI.filterEntry = nil
+    ISCraftingUI.filterAll = nil
+-- ]]
 
 -- This should really be stored on an object somewhere, why does it need to be fetched and locally stored?
 ISCraftingUI.fontHeightSmall = getTextManager():getFontFromEnum(UIFont.Small):getLineHeight();
@@ -111,7 +175,6 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self.panel.target = self;
         self.panel:setEqualTabWidth(false)
         self:addChild(self.panel);
-        self:UpdateRecipes();
 
         self.craftOneButton = ISButton:new(0, self.height-ISCraftingUI.bottomInfoHeight-20-15, 50,25,getText("IGUI_CraftUI_ButtonCraftOne"),self, ISCraftingUI.craft);
         self.craftOneButton:initialise()
@@ -132,6 +195,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self.addIngredientButton:initialise()
         self:addChild(self.addIngredientButton);
         self.addIngredientButton:setVisible(false);
+
         self.ingredientPanel = ISScrollingListBox:new(1, 30, self.width / 3, self.height - (59 + ISCraftingUI.bottomInfoHeight));
         self.ingredientPanel:initialise()
         self.ingredientPanel:instantiate()
@@ -222,6 +286,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self.recipe_listbox.selected = 0;
         -- TODO: Add recipe listbox events
         self.recipe_listbox.doDrawItem = self.DrawRecipes;
+        self.recipe_listbox:setOnMouseDownFunction(self, self.OnChooseRecipe);
         -- self.recipe_listbox.onMouseDown = ISCraftingCategoryUI.onMouseDown_Recipes;
         -- self.recipe_listbox.onMouseDoubleClick = ISCraftingCategoryUI.onMouseDoubleClick_Recipes;
         self.recipe_listbox.joypadParent = self;
@@ -242,6 +307,8 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         
         self.favouriteXPos = self.recipe_listbox:getWidth() - self.favouriteXPad - self.favouriteStar:getWidth();
 
+        self:AddCategory("Favorite");
+        self:AddCategory("General");
         self:Refresh();
     end
 
@@ -262,7 +329,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         -- end
         -- if self.needRefreshIngredientPanel then
         --     self.needRefreshIngredientPanel = false
-        --     self:RefreshIngredientPanel()
+        --     self:UpdateSelectedRecipe()
         -- end
     end
 
@@ -302,7 +369,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             --     self.needRefreshIngredientPanel = self.needRefreshIngredientPanel or areTablesDifferent(selectedItem.typesAvailable, typesAvailable);
             --     selectedItem.typesAvailable = typesAvailable;
             -- end
-            self:getContainers();
+            -- self:UpdateAvailableItems();
             -- recipe.available = RecipeManager.IsRecipeValid(recipe.baseRecipe, self.character, nil, self.containerList);
             self.craftOneButton:setVisible(true);
             self.craftAllButton:setVisible(true);
@@ -425,6 +492,257 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             setJoypadFocus(self.playerNum, nil)
         end
     end
+
+    function ISCraftingUI:OnChooseRecipe(data)
+        self.hasRendererIngredients_b = false;
+    end
+-- ]]
+
+-- [[ Update functions
+    -- TODO: Might move this into update itself?
+    function ISCraftingUI:Refresh()
+        --- Ideally, these would update on event calls, e.g. when an item is dropped
+        --- but I don't believe such events exist in the base game, so the only
+        --- option for a response UI is to regularly update them.
+
+        self:UpdateAvailableItems();
+        -- Rare update
+        if math.fmod(self.frameCounter_i, 60) == 0 then
+            self:UpdateKnownRecipes();
+        end
+        self:FilterRecipes("", self.filterAll:isSelected(1));
+        self:UpdateRecipesAvailable();
+        self:UpdateSelectedRecipe();
+        
+
+        self.frameCounter_i = self.frameCounter_i + 1;
+        if true then return end;
+
+        local recipeListBox = self:getRecipeListBox();
+        local selectedItem = recipeListBox.items[recipeListBox.selected];
+        if selectedItem then selectedItem = selectedItem.item.recipe end
+        local selectedView = self.panel.activeView.name;
+        self:UpdateAvailableItems();  -- TODO: I'm not sure how taxing this is. Basic tests seemed fine.
+        self:populateRecipesList();
+        self:sortList();
+        for i=#self.categories,1,-1 do
+            local categoryUI = self.categories[i];
+            local found = false;
+            for j=1,#self.recipesListH do
+                if self.recipesListH[j] == categoryUI.category then
+                    found = true;
+                    break;
+                end
+            end
+            if not found then
+                self.panel:removeView(categoryUI);
+                table.remove(self.categories, i);
+            else
+                categoryUI:filter();
+            end
+        end
+        self.panel:activateView(selectedView);
+
+        if selectedItem then
+            for i,item in ipairs(recipeListBox.items) do
+                if item.item.recipe == selectedItem then
+                    recipeListBox.selected = i;
+                    break;
+                end
+            end
+        end
+        local k
+        for k = 1 , #self.recipesListH, 1 do
+            local i = self.recipesListH[k]
+            local v = self.recipesList[i]
+            local found = false;
+            for k,l in ipairs(self.categories) do
+                if i == l.category then
+                    found = true;
+                    break;
+                end
+            end
+            if not found then
+                -- local cat1 = ISCraftingCategoryUI:new(0, 0, self.width, self.panel.height - self.panel.tabHeight, self);
+                -- cat1:initialise();
+                -- local catName = getTextOrNull("IGUI_CraftCategory_"..i) or i
+                -- self.panel:addView(catName, cat1);
+                -- cat1.infoText = getText("UI_CraftingUI");
+                -- cat1.parent = self;
+                -- cat1.category = i;
+                -- for s,d in ipairs(v) do
+                --     cat1.recipes:addItem(s,d);
+                -- end
+                -- table.insert(self.categories, cat1);
+            end
+        end
+        if #recipeListBox.items == 0 then
+            self.panel:activateView(getText("IGUI_CraftCategory_General"));
+        end
+        self:refreshIngredientList()
+    end
+
+    function ISCraftingUI:UpdateKnownRecipes()
+        -- TODO: Visible recipe only supports adding recipes for now. Add hiding support.
+        local recipes = getAllRecipes();  -- Java array
+        for i = 0, recipes:size() - 1 do
+            local recipe = recipes:get(i);
+            -- Add new recipes.
+            if self.allRecipes_ht[recipe] == nil then
+                r = CDRecipe:New(recipe);
+                r:UpdateAvailability(false);
+
+                self.allRecipes_ht[recipe] = r;
+
+                if self.recipeCategories_ht[r.category_str] == nil then
+                    --- This maintains the functionality of the base game,
+                    --- where categories only appear if you can craft something in them,
+                    --- where favourite and general are the first categories,
+                    --- and where the rest are random order
+                    self.recipeCategories_ht[r.category_str] = {};
+                    self:AddCategory(r.category_str);
+                end
+                self.recipeCategories_ht[r.category_str][r] = true;
+            end
+        end
+    end
+
+    function ISCraftingUI:UpdateAvailableItems()
+        if not self.character then return end
+        self.containerList = ArrayList.new();
+        for i,v in ipairs(getPlayerInventory(self.playerNum).inventoryPane.inventoryPage.backpacks) do
+            self.containerList:add(v.inventory);
+        end
+        for i,v in ipairs(getPlayerLoot(self.playerNum).inventoryPane.inventoryPage.backpacks) do
+            self.containerList:add(v.inventory);
+        end
+    
+        self.availableItems_ht = {};
+        for i = 0, self.containerList:size() - 1 do
+            local container = self.containerList:get(i);
+            local inventory_items = container:getAllEval(function(a) return true end);
+            for j = 0, inventory_items:size() - 1 do
+                local item = inventory_items:get(j);
+                local full_type = item:getFullType()
+    
+                -- -- TODO: I'm not sure this is 1:one with the original code. Test it.
+                -- if self:isWaterSource(item, source:getCount()) then
+                --     result["Water"] = (result["Water"] or 0) + item:getDrainableUsesInt();
+                -- elseif sourceItemTypes[item:getFullType()] then
+                --     local count = 1
+                --     if not source:isDestroy() and item:IsDrainable() then
+                --         count = item:getDrainableUsesInt()
+                --     end
+                --     if not source:isDestroy() and instanceof(item, "Food") then
+                --         if source:getUse() > 0 then
+                --             count = -item:getHungerChange() * 100
+                --         end
+                --     end
+                --     result[item:getFullType()] = (result[item:getFullType()] or 0) + count;
+                -- end
+                if self.availableItems_ht[full_type] == nil then
+                    self.availableItems_ht[full_type] = {};
+                end
+                table.insert(self.availableItems_ht[full_type], item);
+            end
+        end
+    end
+
+    function ISCraftingUI:UpdateRecipesAvailable()
+        -- TODO: If performance proves to be an issue, try chunking this update.
+        for _, list_item in pairs(self.recipe_listbox.items) do
+            local recipe = list_item.item;
+            -- TODO: Only filter recipes if there was a change.
+            recipe:UpdateAvailability(false);
+        end
+    end
+
+    function ISCraftingUI:UpdateSelectedRecipe()
+        -- TODO: What does recipeListHasFocus do?
+        local hasFocus = self.recipeListHasFocus;
+        self.recipeListHasFocus = true;
+        self.ingredientPanel:setVisible(false);
+
+        if not self.recipe_listbox.items or #self.recipe_listbox.items == 0 or not self.recipe_listbox.items[self.recipe_listbox.selected] then return end
+        
+        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
+        if not recipe or recipe.evolved then return end
+
+        self.recipeListHasFocus = hasFocus;
+        self.ingredientPanel:setVisible(true) 
+        recipe:UpdateAvailability(true);
+        if self.hasRendererIngredients_b and not recipe.sourcesChanged_b then
+            return;
+        end
+        self.hasRendererIngredients_b = true;
+        
+        self.ingredientPanel:clear();
+        local sortedSources = {};
+        for _, source in ipairs(recipe.sources_ar) do
+            table.insert(sortedSources, source)
+        end
+        table.sort(sortedSources, function(a,b) return #a.items_ar == 1 and #b.items_ar > 1 end)
+
+        for _, source in ipairs(sortedSources) do
+            local available = {}
+            local unavailable = {}
+
+            for _, source_item in ipairs(source.items_ar) do
+                if source_item == nil then
+                end
+                if source_item.available_b then --recipe_types_available and (not recipe_types_available[source_item.fullType] or recipe_types_available[source_item.fullType] < source_item.source.requiredCount_i) then
+                    table.insert(available, source_item);
+                else
+                    table.insert(unavailable, source_item);
+                end
+            end
+
+            -- Drop down for "One of these items"
+            if #source.items_ar > 1 then
+                local dropdown = {}
+                dropdown.recipe = recipe
+                dropdown.texture = self.TreeExpanded
+                dropdown.multipleHeader = true
+                dropdown.available_b = #available > 0;
+                self.ingredientPanel:addItem(getText("IGUI_CraftUI_OneOf"), dropdown)
+            end
+
+            -- What in blazes does this do?
+            -- for j=1,#available do
+            --     local item = available[j]
+            --     self:removeExtraClothingItemsFromList(j+1, item, available)
+            -- end
+            -- for j=1,#available do
+            --     local item = available[j]
+            --     self:removeExtraClothingItemsFromList(1, item, unavailable)
+            -- end
+            -- for j=1,#unavailable do
+            --     local item = unavailable[j]
+            --     self:removeExtraClothingItemsFromList(j+1, item, unavailable)
+            -- end
+
+            table.sort(available, function(a, b) return not string.sort(a.name, b.name) end)
+            table.sort(unavailable, function(a, b) return not string.sort(a.name, b.name) end)
+
+            for _, item in ipairs(available) do
+                if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
+                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
+                else
+                    self.ingredientPanel:addItem(item.name, item)
+                end
+            end
+
+            for _, item in ipairs(unavailable) do
+                if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
+                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
+                else
+                    self.ingredientPanel:addItem(item.name, item)
+                end
+            end
+        end
+
+        self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient;
+    end
 -- ]]
 
 -- [[ Render functions
@@ -462,7 +780,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         end
 
         if recipe ~= self.selectedRecipe then
-            self:RefreshIngredientPanel();
+            self:UpdateSelectedRecipe();
             self:refreshIngredientList();
             self.selectedRecipe = recipe;
         end
@@ -644,185 +962,6 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         -- y = self.ingredientListbox:getBottom()
     end
 
-    -- function ISCraftingUI:RefreshIngredientPanel()
-    --     local hasFocus = not self.recipeListHasFocus
-    --     self.recipeListHasFocus = true
-    --     self.ingredientPanel:setVisible(false)
-
-    --     local recipeListbox = self:getRecipeListBox()
-    --     if not recipeListbox.items or #recipeListbox.items == 0 or not recipeListbox.items[recipeListbox.selected] then return end
-    --     local selectedItem = recipeListbox.items[recipeListbox.selected].item;
-    --     if not selectedItem or selectedItem.evolved then return end
-
-    --     selectedItem.typesAvailable = self:getAvailableItemsType()
-
-    --     self.recipeListHasFocus = not hasFocus
-    --     self.ingredientPanel:setVisible(true) 
-
-    --     self.ingredientPanel:clear()
-        
-    --     -- Display single-item sources before multi-item sources
-    --     local sortedSources = {}
-    --     for _,source in ipairs(selectedItem.sources) do
-    --         table.insert(sortedSources, source)
-    --     end
-    --     table.sort(sortedSources, function(a,b) return #a.items == 1 and #b.items > 1 end)
-
-    --     for _,source in ipairs(sortedSources) do
-    --         local available = {}
-    --         local unavailable = {}
-
-    --         for _,item in ipairs(source.items) do
-    --             local data = {}
-    --             data.selectedItem = selectedItem
-    --             data.name = item.name
-    --             data.texture = item.texture
-    --             data.fullType = item.fullType
-    --             data.count = item.source.requiredCount_i
-    --             data.recipe = selectedItem.recipe
-    --             data.multiple = #source.items > 1
-    --             if selectedItem.typesAvailable and (not selectedItem.typesAvailable[item.fullType] or selectedItem.typesAvailable[item.fullType] < item.source.requiredCount_i) then
-    --                 table.insert(unavailable, data)
-    --             else
-    --                 table.insert(available, data)
-    --             end
-    --         end
-    --         table.sort(available, function(a,b) return not string.sort(a.name, b.name) end)
-    --         table.sort(unavailable, function(a,b) return not string.sort(a.name, b.name) end)
-
-    --         if #source.items > 1 then
-    --             local data = {}
-    --             data.selectedItem = selectedItem
-    --             data.texture = self.TreeExpanded
-    --             data.multipleHeader = true
-    --             data.available = #available > 0
-    --             self.ingredientPanel:addItem(getText("IGUI_CraftUI_OneOf"), data)
-    --         end
-
-    --         -- Hack for "Dismantle Digital Watch" and similar recipes.
-    --         -- Recipe sources include both left-hand and right-hand versions of the same item.
-    --         -- We only want to display one of them.
-    --         ---[[
-    --         for j=1,#available do
-    --             local item = available[j]
-    --             self:removeExtraClothingItemsFromList(j+1, item, available)
-    --         end
-
-    --         for j=1,#available do
-    --             local item = available[j]
-    --             self:removeExtraClothingItemsFromList(1, item, unavailable)
-    --         end
-
-    --         for j=1,#unavailable do
-    --             local item = unavailable[j]
-    --             self:removeExtraClothingItemsFromList(j+1, item, unavailable)
-    --         end
-    --         --]]
-
-    --         for k,item in ipairs(available) do
-    --             if #source.items > 1 and item.source.requiredCount_i > 1 then
-    --                 self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-    --             else
-    --                 self.ingredientPanel:addItem(item.name, item)
-    --             end;
-    --         end
-    --         for k,item in ipairs(unavailable) do
-    --             if #source.items > 1 and item.source.requiredCount_i > 1 then
-    --                 self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-    --             else
-    --                 self.ingredientPanel:addItem(item.name, item)
-    --             end
-    --         end
-    --     end
-
-    --     self.refreshTypesAvailableMS = getTimestampMs()
-
-    --     self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient
-    -- end
-
-    function ISCraftingUI:RefreshIngredientPanel()
-        local hasFocus = self.recipeListHasFocus;
-        self.recipeListHasFocus = true;
-        self.ingredientPanel:setVisible(false);
-
-        -- Should something be getting displayed?
-        if not self.recipe_listbox.items or #self.recipe_listbox.items == 0 or not self.recipe_listbox.items[self.recipe_listbox.selected] then return end
-        local recipe = self.recipe_listbox.items[self.recipe_listbox.selected].item;
-        if not recipe or recipe.evolved then return end
-
-        self.recipeListHasFocus = hasFocus;
-        self.ingredientPanel:setVisible(true) 
-
-        recipe.typesAvailable_hs = self:getAvailableItemsType();
-        self.ingredientPanel:clear()
-        local sortedSources = {}
-        for _, source in ipairs(recipe.sources_ar) do
-            table.insert(sortedSources, source)
-        end
-        table.sort(sortedSources, function(a,b) return #a.items_ar == 1 and #b.items_ar > 1 end)
-
-        for _, source in ipairs(sortedSources) do
-            local available = {}
-            local unavailable = {}
-
-            for _, source_item in ipairs(source.items_ar) do
-                if source_item == nil then
-                end
-                if source_item.available_b then --recipe_types_available and (not recipe_types_available[source_item.fullType] or recipe_types_available[source_item.fullType] < source_item.source.requiredCount_i) then
-                    table.insert(available, source_item);
-                else
-                    table.insert(unavailable, source_item);
-                end
-            end
-
-            -- Drop down for "One of these items"
-            if #source.items_ar > 1 then
-                local dropdown = {}
-                dropdown.recipe = recipe
-                dropdown.texture = self.TreeExpanded
-                dropdown.multipleHeader = true
-                dropdown.available_b = #available > 0;
-                self.ingredientPanel:addItem(getText("IGUI_CraftUI_OneOf"), dropdown)
-            end
-
-            -- What in blazes does this do?
-            -- for j=1,#available do
-            --     local item = available[j]
-            --     self:removeExtraClothingItemsFromList(j+1, item, available)
-            -- end
-            -- for j=1,#available do
-            --     local item = available[j]
-            --     self:removeExtraClothingItemsFromList(1, item, unavailable)
-            -- end
-            -- for j=1,#unavailable do
-            --     local item = unavailable[j]
-            --     self:removeExtraClothingItemsFromList(j+1, item, unavailable)
-            -- end
-
-            table.sort(available, function(a, b) return not string.sort(a.name, b.name) end)
-            table.sort(unavailable, function(a, b) return not string.sort(a.name, b.name) end)
-
-            for _, item in ipairs(available) do
-                if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
-                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-                else
-                    self.ingredientPanel:addItem(item.name, item)
-                end
-            end
-
-            for _, item in ipairs(unavailable) do
-                if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
-                    self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-                else
-                    self.ingredientPanel:addItem(item.name, item)
-                end
-            end
-        end
-
-        self.refreshTypesAvailableMS = getTimestampMs();
-        self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient;
-    end
-
     function ISCraftingUI.drawNonEvolvedIngredient(ingredient_panel, y, item, alt)
         if y + ingredient_panel:getYScroll() >= ingredient_panel.height then return y + ingredient_panel.itemheight end
         if y + ingredient_panel.itemheight + ingredient_panel:getYScroll() <= 0 then return y + ingredient_panel.itemheight end
@@ -939,100 +1078,6 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 -- ]]
 
--- TODO: would rather this be an extension for listbox
-function ISCraftingUI:GetListboxSelected(listbox)
-    if #listbox.items == 0 then return nil; end
-    if #listbox.items < listbox.selected then return nil; end
-    if listbox.selected < 1 then return nil; end
-    return listbox.items[listbox.selected];
-end
-
--- TODO: Update containerList
-function ISCraftingUI:UpdateRecipes()
-    --- This following hash table caused, without exaggeration,
-    --- 3 days of on-off bug fixing and insanity spiralling to get working.
-    --- The problem was simple: I could not iterate over the hash table.
-    ---
-    --- Because of the dogshit error checking and batshit edge cases in lua,
-    --- I checked just about every possible route before finding the answer.
-    --- I have never felt so destitute over a piece of code as I have in Lua.
-    --- I could find no forum posts detailing this, no documentation outlining this.
-    ---
-    --- In fixing this, I tried something simple: Count the number of entries in a dictionary.
-    --- It kept returning 0.
-    --- Even when I expressly put a key in that should get counted - ht["test"] = "testval";
-    --- So as a last ditch, I tried first clearing the table, adding my test, and then counting.
-    --- ht = {}; ht["test"] = "testval";
-    --- And it worked. It should not have worked.
-    ---
-    --- I cannot express the myriad of swirling emotions that erupted,
-    --- compounding on an already quite terrible day.
-    ---
-    --- For a while I thought I might have, somehow, somewhere, corrupted the compiler.
-    --- This behaviour was so far beyond what I expected of any programming language,
-    --- I believed the only possibility was that it was not in the language.
-    ---
-    --- The answer?
-    --- I had been accidentally putting null values into my hash table here.
-    --- When a table has "null" as a key, it REFUSES to be iterated over past null.
-    --- It will throw no errors, and you can still access those keys by directly checking.
-    --- But iteration will not work.
-    ---
-    --- I loathe this language. And yet, that is exactly why I am here.
-    --- In no other language would I be presented with a problem so concisely complex as this.
-    --- Lua, and this codebase, is like being on the front lines of an apocalyptic war.
-    --- It will claim me. But it challenges me to impossible problems, and makes me feel alive.
-    ---
-    --- Never before have I had to do a writeup about a variable.
-    -- ISCraftingUI.instance = self;
-    self:getContainers();
-    self.recipeCategories_ht = {};
-    local recipes = getAllRecipes();  -- Java array
-    for i = 0, recipes:size() - 1 do
-        local newItem = {};
-        local recipe = recipes:get(i);
-        if recipe:isHidden() or not self.character or (recipe:needToBeLearn() and not self.character:isRecipeKnown(recipe)) then
-
-        else
-            local r = CDRecipe:New(recipe, self.character, self.containerList);
-            if self.recipeCategories_ht[r.category_str] == nil then
-                self.recipeCategories_ht[r.category_str] = {};
-            end
-            self.recipeCategories_ht[r.category_str][r] = true;
-
-            self.allRecipes_hs[r] = true;
-        end
-    end
-    
-    -- TODO: Index evolved recipes.
-    -- TODO: Favourited recipes.
-
-    self:UpdateCategories();
-end
-
-function ISCraftingUI:UpdateCategories()
-    --- This maintains the functionality of the base game,
-    --- where categories only appear if you can craft something in them,
-    --- where favourite and general are the first categories,
-    --- and where the rest are random order
-
-    for name, _ in pairs(self.categories_hs) do
-        self.panel:removeView(name);
-    end
-    self.categories_hs = {};
-
-    -- TODO: Check "general" is the internal category names.
-    self:AddCategory("Favorite");
-    self:AddCategory("General");
-
-    for category_name, _ in pairs(self.recipeCategories_ht) do
-        -- No CONTINUE KEYWORD.
-        if category_name ~= "Favorite" and category_name ~= "General" then
-            self:AddCategory(category_name);
-        end
-    end
-end
-
 function ISCraftingUI:AddCategory(category_name_internal)
     if self.categories_hs[category_name_internal] ~= nil then
         print("CDCrafting ERROR: Tried to create a category that already exists!");
@@ -1050,7 +1095,7 @@ function ISCraftingUI:AddCategory(category_name_internal)
     cat.infoText = getText("UI_CraftingUI");
 end
 
-function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
+function ISCraftingUI:FilterRecipes(filter_str, all_b)
     self.currentCategory_str = self.panel.activeView.name;
     local s = self.recipe_listbox.selected;
     self.recipe_listbox:clear();
@@ -1059,7 +1104,10 @@ function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
     
     local list = nil;
     if all_b then
-        list = self.allRecipes_hs;
+        list = {};
+        for _, recipe in pairs(self.allRecipes_ht) do
+            list[recipe] = true;
+        end
     else
         list = self.recipeCategories_ht[self.currentCategory_str];
     end
@@ -1073,76 +1121,6 @@ function ISCraftingUI:SetDisplayedRecipes(filter_str, all_b)
 
     -- TODO: Implement filter parsing.
     table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
-end
-
-function ISCraftingUI:Refresh()
-    self:SetDisplayedRecipes("", true)--self.filterAll:isSelected(1));
-    self:RefreshIngredientPanel();
-    -- self:UpdateRecipes();
-    -- self:refreshIngredientList();
-    if true then return end;
-    local recipeListBox = self:getRecipeListBox();
-    local selectedItem = recipeListBox.items[recipeListBox.selected];
-    if selectedItem then selectedItem = selectedItem.item.recipe end
-    local selectedView = self.panel.activeView.name;
-    self:getContainers();
-    self:populateRecipesList();
-    self:sortList();
-    for i=#self.categories,1,-1 do
-        local categoryUI = self.categories[i];
-        local found = false;
-        for j=1,#self.recipesListH do
-            if self.recipesListH[j] == categoryUI.category then
-                found = true;
-                break;
-            end
-        end
-        if not found then
-            self.panel:removeView(categoryUI);
-            table.remove(self.categories, i);
-        else
-            categoryUI:filter();
-        end
-    end
-    self.panel:activateView(selectedView);
-
-    if selectedItem then
-        for i,item in ipairs(recipeListBox.items) do
-            if item.item.recipe == selectedItem then
-                recipeListBox.selected = i;
-                break;
-            end
-        end
-    end
-    local k
-    for k = 1 , #self.recipesListH, 1 do
-        local i = self.recipesListH[k]
-        local v = self.recipesList[i]
-        local found = false;
-        for k,l in ipairs(self.categories) do
-            if i == l.category then
-                found = true;
-                break;
-            end
-        end
-        if not found then
-            -- local cat1 = ISCraftingCategoryUI:new(0, 0, self.width, self.panel.height - self.panel.tabHeight, self);
-            -- cat1:initialise();
-            -- local catName = getTextOrNull("IGUI_CraftCategory_"..i) or i
-            -- self.panel:addView(catName, cat1);
-            -- cat1.infoText = getText("UI_CraftingUI");
-            -- cat1.parent = self;
-            -- cat1.category = i;
-            -- for s,d in ipairs(v) do
-            --     cat1.recipes:addItem(s,d);
-            -- end
-            -- table.insert(self.categories, cat1);
-        end
-    end
-    if #recipeListBox.items == 0 then
-        self.panel:activateView(getText("IGUI_CraftCategory_General"));
-    end
-    self:refreshIngredientList()
 end
 
 function ISCraftingUI:isWaterSource(item)
@@ -1193,47 +1171,6 @@ end
 
 ISCraftingUI.sortByName = function(a,b)
     return string.sort(b.recipe:getName(), a.recipe:getName());
-end
-
-function ISCraftingUI:getContainers()
-    if not self.character then return end
-    self.containerList = ArrayList.new();
-    for i,v in ipairs(getPlayerInventory(self.playerNum).inventoryPane.inventoryPage.backpacks) do
-        self.containerList:add(v.inventory);
-    end
-    for i,v in ipairs(getPlayerLoot(self.playerNum).inventoryPane.inventoryPage.backpacks) do
-        self.containerList:add(v.inventory);
-    end
-
-    self.availableItems_ht = {};
-    for i = 0, self.containerList:size() - 1 do
-        local container = self.containerList:get(i);
-        local inventory_items = container:getAllEval(function(a) return true end);
-        for j = 0, inventory_items:size() - 1 do
-            local item = inventory_items:get(j);
-            local full_type = item:getFullType()
-
-            -- -- TODO: I'm not sure this is 1:one with the original code. Test it.
-            -- if self:isWaterSource(item, source:getCount()) then
-            --     result["Water"] = (result["Water"] or 0) + item:getDrainableUsesInt();
-            -- elseif sourceItemTypes[item:getFullType()] then
-            --     local count = 1
-            --     if not source:isDestroy() and item:IsDrainable() then
-            --         count = item:getDrainableUsesInt()
-            --     end
-            --     if not source:isDestroy() and instanceof(item, "Food") then
-            --         if source:getUse() > 0 then
-            --             count = -item:getHungerChange() * 100
-            --         end
-            --     end
-            --     result[item:getFullType()] = (result[item:getFullType()] or 0) + count;
-            -- end
-            if self.availableItems_ht[full_type] == nil then
-                self.availableItems_ht[full_type] = {};
-            end
-            table.insert(self.availableItems_ht[full_type], item);
-        end
-    end
 end
 
 function ISCraftingUI:refreshTickBox()
@@ -1741,13 +1678,21 @@ function ISCraftingUI:debugGiveIngredients()
     local recipe = selectedItem.recipe
     local items = {}
     local options = {}
-    options.AvailableItemsAll = RecipeManager.getAvailableItemsAll(recipe, self.character, self:getContainers(), nil, nil)
+    options.AvailableItemsAll = RecipeManager.getAvailableItemsAll(recipe, self.character, self:UpdateAvailableItems(), nil, nil)
     options.MaxItemsPerSource = 10
     options.NoDuplicateKeep = true
     RecipeUtils.CreateSourceItems(recipe, options, items)
     for _,item in ipairs(items) do
         self.character:getInventory():AddItem(item)
     end
+end
+
+-- TODO: would rather this be an extension for listbox
+function ISCraftingUI:GetListboxSelected(listbox)
+    if #listbox.items == 0 then return nil; end
+    if #listbox.items < listbox.selected then return nil; end
+    if listbox.selected < 1 then return nil; end
+    return listbox.items[listbox.selected];
 end
 
 Events.OnCustomUIKey.Add(ISCraftingUI.onPressKey);

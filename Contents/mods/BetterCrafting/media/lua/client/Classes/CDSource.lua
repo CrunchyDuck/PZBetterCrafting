@@ -6,19 +6,23 @@ CDSource.baseSource = nil;
 CDSource.recipe = nil;
 CDSource.requiredCount_i = 0;
 CDSource.items_ar = {};  -- ar[CDSourceItem]
-CDSource.items_ht = {};  -- ht[fullType_str, CDSourceItem]
-CDSource.available_b = false;
 
-function CDSource:New(recipe, source)
+CDSource.available_b = false;
+CDSource.detailed_b = false;
+CDSource.availableChanged_b = false;
+CDSource.itemsChanged_b = false;
+CDSource.anyChange_b = false;
+
+function CDSource:New(recipe, baseSource)
     local o = CDTools:ShallowCopy(CDSource)
-    o.baseSource = source;
+    o.baseSource = baseSource;
     o.recipe = recipe;
     -- Originally this was stored on the items rather than the source? why??
-    o.requiredCount_i = source:getCount();
+    o.requiredCount_i = baseSource:getCount();
 
     o.items_ar = {};
-    for k = 0, source:getItems():size() - 1 do
-        local fullType = source:getItems():get(k);
+    for k = 0, baseSource:getItems():size() - 1 do
+        local fullType = baseSource:getItems():get(k);
         local item_instance = nil;
         if fullType == "Water" then
             item_instance = CDRecipe:GetItemInstance("Base.WaterDrop");
@@ -32,11 +36,44 @@ function CDSource:New(recipe, source)
         if item_instance then
             local cditem = CDSourceItem:New(recipe, o, item_instance);
             table.insert(o.items_ar, cditem);
-            if cditem.available_b then
-                o.available_b = true;
-            end
         end
     end
 
     return o;
+end
+
+function CDSource:UpdateAvailability(detailed_b)
+    self.detailed_b = detailed_b;
+    local last_available = self.available_b;
+    self.available_b = false;
+    self.availableChanged_b = false;
+    self.itemsChanged_b = false;
+    self.anyChange_b = false;
+
+    for _, item in pairs(self.items_ar) do
+        item:UpdateAvailability(detailed_b);
+        if item.available then
+            self.available_b = true;
+        end
+
+        if item.anyChange_b then
+            self.itemsChanged_b = true;
+            self.anyChange_b = true;
+        end
+        
+        -- Sources are valid if any item is available.
+        if item.available_b then
+            self.available_b = true;
+            -- If not detailed view, don't bother checking any more items.
+            if not detailed_b then
+                break;
+            end
+        end
+    end
+
+    if last_available ~= self.available_b then
+        self.availableChanged_b = true;
+        self.anyChange_b = true;
+    end
+    return;
 end
