@@ -76,7 +76,9 @@ ISCraftingUI.selectedRecipe = nil;
 --- While slower than the built in way (maybe), this exposes more of the code to modification
 --- The vanilla method is also a confusing mess that doesn't work nicely with my object oriented rewrite.
 ISCraftingUI.availableItems_ht = nil;  -- ht[string, ar[zombie.inventory.InventoryItem]].
-ISCraftingUI.lastFilter = "";
+ISCraftingUI.shouldUpdateFilter_b = false;
+ISCraftingUI.lastNameFilter_str = false;
+ISCraftingUI.lastComponentFilter_str = false;
 
 -- [[ UI variables
     ISCraftingUI.panel = nil;
@@ -178,7 +180,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self.panel:setAnchorRight(true)
         self.panel:setAnchorBottom(true)
         self.panel.borderColor = { r = 0, g = 0, b = 0, a = 0};
-        self.panel.onActivateView = ISCraftingUI.onActivateView;
+        self.panel.onActivateView = ISCraftingUI.OnActivateView;
         self.panel.target = self;
         self.panel:setEqualTabWidth(false)
         self:addChild(self.panel);
@@ -273,7 +275,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self:addChild(self.nameFilterEntry);
         x = x + self.nameFilterEntry.width + 5;
 
-        self.filterAll = ISTickBox:new(x, y, 20, entryHgt, "", self, self.onFilterAll);
+        self.filterAll = ISTickBox:new(x, y, 20, entryHgt, "", self, self.OnFilterAll);
         self.filterAll:initialise();
         self.filterAll:addOption(getText("IGUI_FilterAll"));
         self.filterAll:setWidthToFit();
@@ -518,26 +520,30 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     function ISCraftingUI:OnChooseRecipe(data)
         self.hasRendererIngredients_b = false;
     end
+
+    function ISCraftingUI:OnFilterAll(data)
+        self.shouldUpdateFilter_b = true;
+    end
+
+    function ISCraftingUI:OnActivateView()
+        self.shouldUpdateFilter_b = true;
+    end
 -- ]]
 
 -- [[ Update functions
     -- TODO: Might move this into update itself?
     function ISCraftingUI:Refresh()
-        --- Ideally, these would update on event calls, e.g. when an item is dropped
-        --- but I don't believe such events exist in the base game, so the only
-        --- option for a response UI is to regularly update them.
-
-        self:UpdateAvailableItems();
-        -- Rare update
-        if math.fmod(self.frameCounter_i, 60) == 0 then
-            self:UpdateKnownRecipes();
-        end
+        self:UpdateKnownRecipes();
         self:UpdateRecipeFilter();
+        
+        self:UpdateAvailableItems();
         self:UpdateRecipesAvailable();
         self:UpdateSelectedRecipe();
-        
 
+        self:UpdateRecipeOrder();
+        
         self.frameCounter_i = self.frameCounter_i + 1;
+        
         if true then return end;
 
         local recipeListBox = self:getRecipeListBox();
@@ -611,8 +617,9 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             local recipe = recipes:get(i);
             -- Add new recipes.
             if self.allRecipes_ht[recipe] == nil then
+                self.shouldUpdateFilter_b = true;
                 r = CDRecipe:New(recipe);
-                r:UpdateAvailability(false);
+                -- r:UpdateAvailability(false);
 
                 self.allRecipes_ht[recipe] = r;
 
@@ -630,6 +637,14 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 
     function ISCraftingUI:UpdateRecipeFilter()
+        -- Doesn't seem to be an event for key down input.
+        local nf = self.nameFilterEntry:getInternalText():trim():lower();
+        local cf = self.componentFilterEntry:getInternalText():trim():lower();
+        if not self.shouldUpdateFilter_b and
+        (nf == self.lastNameFilter_str and cf == self.lastComponentFilter_str) then
+            return;
+        end
+        self.shouldUpdateFilter_b = false;
         local all_b = self.filterAll:isSelected(1)
         
         self.currentCategory_str = self.panel.activeView.name;
@@ -654,7 +669,6 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         for k, _ in pairs(recipes_list) do
             self.recipe_listbox:addItem(k.outputName_str, k);
         end
-        table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
     
     end
 
@@ -705,6 +719,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             local recipe = list_item.item;
             -- TODO: Only filter recipes if there was a change.
             recipe:UpdateAvailability(false);
+            self.shouldUpdateFilter_b = self.shouldUpdateFilter_b or recipe.availableChanged_b;
         end
     end
 
@@ -793,6 +808,10 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         end
 
         self.ingredientPanel.doDrawItem = ISCraftingUI.drawNonEvolvedIngredient;
+    end
+
+    function ISCraftingUI:UpdateRecipeOrder()
+        table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
     end
 -- ]]
 
@@ -1135,11 +1154,8 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
 function ISCraftingUI:FilterRecipes(recipe_hs)
     local name_filter = self.nameFilterEntry:getInternalText():trim():lower();
     local component_filter = self.componentFilterEntry:getInternalText():trim():lower();
-    -- if name_filter == self.lastNameFilter and component_filter == self.lastComponentFilter then
-    --     return recipe_hs;
-    -- end
-    self.lastNameFilter = name_filter;
-    self.lastComponentFilter = component_filter;
+    self.lastNameFilter_str = name_filter;
+    self.lastComponentFilter_str = component_filter;
     if name_filter == "" and component_filter == "" then
         return recipe_hs;
     end
@@ -1407,12 +1423,6 @@ function ISCraftingUI:refreshIngredientList()
         table.insert(self.catListButtons, button);
         y = y + 25;
     end
-end
-
-function ISCraftingUI:onActivateView()
-    self:Refresh();
-    -- local recipeListBox = self:getRecipeListBox()
-    -- recipeListBox:ensureVisible(recipeListBox.selected);
 end
 
 function ISCraftingUI:sortList() -- sort list with items you can craft in first
