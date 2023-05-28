@@ -79,6 +79,7 @@ ISCraftingUI.availableItems_ht = nil;  -- ht[string, ar[zombie.inventory.Invento
 ISCraftingUI.shouldUpdateFilter_b = false;
 ISCraftingUI.lastNameFilter_str = false;
 ISCraftingUI.lastComponentFilter_str = false;
+ISCraftingUI.shouldUpdateOrder_b = false;
 
 -- [[ UI variables
     ISCraftingUI.panel = nil;
@@ -523,10 +524,12 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
 
     function ISCraftingUI:OnFilterAll(data)
         self.shouldUpdateFilter_b = true;
+        self.shouldUpdateOrder_b = true;
     end
 
     function ISCraftingUI:OnActivateView()
         self.shouldUpdateFilter_b = true;
+        self.shouldUpdateOrder_b = true;
     end
 -- ]]
 
@@ -618,6 +621,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             -- Add new recipes.
             if self.allRecipes_ht[recipe] == nil then
                 self.shouldUpdateFilter_b = true;
+                self.shouldUpdateOrder_b = true;
                 r = CDRecipe:New(recipe);
                 -- r:UpdateAvailability(false);
 
@@ -644,8 +648,9 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         (nf == self.lastNameFilter_str and cf == self.lastComponentFilter_str) then
             return;
         end
-        self.shouldUpdateFilter_b = false;
         local all_b = self.filterAll:isSelected(1)
+        self.shouldUpdateFilter_b = false;
+        self.shouldUpdateOrder_b = true;
         
         self.currentCategory_str = self.panel.activeView.name;
         local s = self.recipe_listbox.selected;
@@ -719,7 +724,9 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             local recipe = list_item.item;
             -- TODO: Only filter recipes if there was a change.
             recipe:UpdateAvailability(false);
-            self.shouldUpdateFilter_b = self.shouldUpdateFilter_b or recipe.availableChanged_b;
+            if recipe.availableChanged_b then
+                self.shouldUpdateOrder_b = true;
+            end
         end
     end
 
@@ -811,7 +818,12 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 
     function ISCraftingUI:UpdateRecipeOrder()
-        table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
+        --- Some recipes have the same names but different outputs.
+        --- Without this check, they roll over each other like a rainbow every frame.
+        if self.shouldUpdateOrder_b then
+            table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
+        end
+        self.shouldUpdateOrder_b = false;
     end
 -- ]]
 
