@@ -1,14 +1,13 @@
 -- TODO: Figure out customRecipeName
 -- TODO: Queuing intermediate recipes.
 -- TODO: Show items that need to be unfrozen/cooked below the available items.
--- TODO: Test if getPlayer() can replace self.character
 -- TODO: "Minimal mode", which displays recipes in a text-only format (akin to CDDA)
 -- TODO: Hiding recipes.
 -- TODO: Index evolved recipes.
 -- TODO: Favourited recipes.
 -- TODO: If the recipe list changes, try keep the thing the player had selected, selected.
 -- TODO: Sub mod that fixes some broken recipes and groups up other recipes.
--- TODO: Mention no controller support on the mod page.
+-- TODO: Mention no controller support/multiplayer testing on the mod page.
 -- TODO: Fix side of ingredients flickering if no scroll bar.
 require "ISUI/ISCraftingUI"
 require "CDRecipe"
@@ -94,8 +93,12 @@ ISCraftingUI.lastFilter = "";
 
     ISCraftingUI.noteText = nil
     ISCraftingUI.keysText = nil
-    ISCraftingUI.filterLabel = nil
-    ISCraftingUI.filterEntry = nil
+
+    ISCraftingUI.nameFilterLabel = nil
+    ISCraftingUI.nameFilterEntry = nil
+    ISCraftingUI.componentFilterLabel = nil
+    ISCraftingUI.componentFilterEntry = nil
+
     ISCraftingUI.filterAll = nil
 -- ]]
 
@@ -253,30 +256,45 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         local x = 4;
         local y = self.panel:getY() + self.panel.tabHeight + 4;
         local text = getText("IGUI_CraftUI_Name_Filter");
+        -- No idea what this math is aiming for.
+        local filter_x = x + getTextManager():MeasureStringX(UIFont.Small, "Component Filter:") + 9;
+        local filter_width = ((self.width/3) - getTextManager():MeasureStringX(UIFont.Small, text)) - 98;
 
         local entryHgt = ISCraftingUI.fontHeightSmall + 2 * 2;
-        self.filterLabel = ISLabel:new(x, y, entryHgt, text,1,1,1,1,UIFont.Small, true);
-        self:addChild(self.filterLabel);
-        x = x + getTextManager():MeasureStringX(UIFont.Small, text) + 9;
+        self.nameFilterLabel = ISLabel:new(x, y, entryHgt, text, 1,1,1,1, UIFont.Small, true);
+        self:addChild(self.nameFilterLabel);
+        x = filter_x;
 
-        local width = ((self.width/3) - getTextManager():MeasureStringX(UIFont.Small, text)) - 98;
-        self.filterEntry = ISTextEntryBox:new("", x, y, width, ISCraftingUI.fontHeightSmall);
-        self.filterEntry:initialise();
-        self.filterEntry:instantiate();
-        self.filterEntry:setText("");
-        self.filterEntry:setClearButton(true);
-        self:addChild(self.filterEntry);
-        -- self.lastText = self.filterEntry:getInternalText();
-        x = x + self.filterEntry.width + 5;
-        
-        -- AAAAAHAHAHAHAHAHAHAHHA. OOOHH! HHOOOOHOHHAHAHA!
-        -- I'M SURE THEY DESIGNED THIS CLASS TO INFLICT HARM ON ALL WHO USE IT!
+        self.nameFilterEntry = ISTextEntryBox:new("", filter_x, y, filter_width, ISCraftingUI.fontHeightSmall);
+        self.nameFilterEntry:initialise();
+        self.nameFilterEntry:instantiate();
+        self.nameFilterEntry:setText("");
+        self.nameFilterEntry:setClearButton(true);
+        self:addChild(self.nameFilterEntry);
+        x = x + self.nameFilterEntry.width + 5;
+
         self.filterAll = ISTickBox:new(x, y, 20, entryHgt, "", self, self.onFilterAll);
         self.filterAll:initialise();
         self.filterAll:addOption(getText("IGUI_FilterAll"));
         self.filterAll:setWidthToFit();
         self.filterAll:setVisible(true);
         self:addChild(self.filterAll);
+
+        -- Component filter.
+        x = 4;
+        y = y + self.nameFilterEntry:getHeight() + 5;
+        local text = "Component Filter:"
+        self.componentFilterLabel = ISLabel:new(x, y, entryHgt, text, 1,1,1,1, UIFont.Small, true);
+        self:addChild(self.componentFilterLabel);
+        x = filter_x;
+
+        self.componentFilterEntry = ISTextEntryBox:new("", filter_x, y, filter_width, ISCraftingUI.fontHeightSmall);
+        self.componentFilterEntry:initialise();
+        self.componentFilterEntry:instantiate();
+        self.componentFilterEntry:setText("");
+        self.componentFilterEntry:setClearButton(true);
+        self:addChild(self.componentFilterEntry);
+        x = x + self.componentFilterEntry.width + 5;
 
         y = y + entryHgt + 25;
 
@@ -612,7 +630,6 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 
     function ISCraftingUI:UpdateRecipeFilter()
-        local filter_str = string.trim(self.filterEntry:getInternalText());
         local all_b = self.filterAll:isSelected(1)
         
         self.currentCategory_str = self.panel.activeView.name;
@@ -632,9 +649,7 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         end
         if recipes_list == nil then return; end
 
-        if filter_str ~= "" then
-            recipes_list = self:FilterRecipes(filter_str, recipes_list);
-        end
+        recipes_list = self:FilterRecipes(recipes_list);
     
         for k, _ in pairs(recipes_list) do
             self.recipe_listbox:addItem(k.outputName_str, k);
@@ -1117,34 +1132,16 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
     end
 -- ]]
 
-function ISCraftingUI:FilterRecipes(filter_str, recipe_hs)
-    if filter_str == self.last_filter then
-        return recipe_ar;
-    end
-    local name_filter = "";
-    local ingredients_filter = "";
-    local operator = "";
-    local content = "";
-
-    self.lastFilter = filter_str;
-    filter_str = filter_str:trim():lower();
-
-    local s = CDTools:SplitString(filter_str, ":");
-    if #s > 1 then
-        operator = s[1];
-        content = s[2];
-    elseif #s == 1 then
-        content = s[1];
-    end
-
-    if operator == "" then
-        name_filter = content;
-    elseif operator == "c" then
-        ingredients_filter = content;
-    end
-
-    if name_filter == "" and ingredients_filter == "" then
-        return recipe_ar;
+function ISCraftingUI:FilterRecipes(recipe_hs)
+    local name_filter = self.nameFilterEntry:getInternalText():trim():lower();
+    local component_filter = self.componentFilterEntry:getInternalText():trim():lower();
+    -- if name_filter == self.lastNameFilter and component_filter == self.lastComponentFilter then
+    --     return recipe_hs;
+    -- end
+    self.lastNameFilter = name_filter;
+    self.lastComponentFilter = component_filter;
+    if name_filter == "" and component_filter == "" then
+        return recipe_hs;
     end
 
     local new_recipes = {};
@@ -1153,18 +1150,18 @@ function ISCraftingUI:FilterRecipes(filter_str, recipe_hs)
             if recipe.outputName_str:lower():contains(name_filter) then
                 new_recipes[recipe] = true;
             end
-        elseif ingredients_filter ~= "" then
+        end
+        if component_filter ~= "" then
             local found_ingredient = false;
 
             for _, source in pairs(recipe.sources_ar) do
                 for _, item in pairs(source.items_ar) do
-                    if item.name:lower():contains(ingredients_filter) then
+                    if item.name:lower():contains(component_filter) then
                         new_recipes[recipe] = true;
                         found_ingredient = true;
                         break;
                     end
                 end
-
                 if found_ingredient then
                     break;
                 end
