@@ -11,6 +11,9 @@ CDRecipe.sources_ar = {};  -- ar[CDSource]
 CDRecipe.onTest = nil;
 CDRecipe.onCanPerform = nil;
 
+CDRecipe.evolved = false;
+CDRecipe.evolvedItems_ar = {};
+
 CDRecipe.available_b = false;
 CDRecipe.detailed_b = false;  -- A non-detailed recipe only checks enough to figure out if it is unavailable.
 CDRecipe.availableChanged_b = false;  -- Whether this recipe's state changed.
@@ -44,16 +47,45 @@ function CDRecipe:New(recipe)
     if o.resultItem then
         o.texture = o.resultItem:getTex();
         o.outputName_str = o.resultItem:getDisplayName();
-        if recipe:getResult():getCount() > 1 then
+        -- if recipe:getResult():getCount() > 1 then
             -- How does the math here work?
-            o.outputCount = (recipe:getResult():getCount() * o.resultItem:getCount()) .. " " .. o.outputName_str;
-        end
+            -- o.outputCount = (recipe:getResult():getCount() * o.resultItem:getCount()) .. " " .. o.outputName_str;
+        -- end
     end
 
     for i = 0, recipe:getSource():size() - 1 do
         local source = CDSource:New(o, recipe:getSource():get(i));  -- zombie.scripting.objects.Recipe.Source
         table.insert(o.sources_ar, source);
     end
+    return o;
+end
+
+function CDRecipe:NewEvolved(recipe)
+    o = CDTools:ShallowCopy(CDRecipe);
+    o.evolvedItems_ar = {};
+    o.resultItem = self:GetItemInstance(recipe:getFullResultItem());
+    if not o.resultItem then
+        return;
+    end
+    o.evolved = true;
+    o.category_str = "Cooking";  -- Evo are only cooking recipes right now.
+    o.baseRecipe = recipe;
+
+    o.texture = o.resultItem:getTex();
+    o.outputName_str = o.resultItem:getName();
+
+    -- Things in the original evolved recipe code I haven't found a use for yet.
+    -- o.itemName = recipe:getName();
+    -- o.baseItem = self:GetItemInstance(evolvedRecipe:getModule():getName() .. "." .. evolvedRecipe:getBaseItem())
+
+    local possible_items = recipe:getPossibleItems();
+    for i = 0, possible_items:size() - 1 do
+        local item = possible_items:get(i);
+        local instance = self:GetItemInstance(item:getFullType());
+        local evo_item = CDEvolvedItem:New(o, instance);
+        table.insert(o.evolvedItems_ar, evo_item);
+    end
+
     return o;
 end
 
@@ -67,7 +99,7 @@ function CDRecipe:UpdateAvailability(detailed_b)
     self.sourcesChanged_b = false;
     self.anyChange_b = false;
 
-    for i, source in pairs(self.sources_ar) do
+    for _, source in pairs(self.sources_ar) do
         source:UpdateAvailability(detailed_b);
         self.available_b = self.available_b and source.available_b;
         
@@ -95,10 +127,12 @@ function CDRecipe:GetItemInstance(type)
     if item_instance then return item_instance end;
 
     item_instance = InventoryItemFactory.CreateItem(type);
-    -- Shouldn't this break if item_instance is nil?
-    if item_instance then
-        CDRecipe.static.itemInstances_ht[type] = item_instance;
-        CDRecipe.static.itemInstances_ht[item_instance:getFullType()] = item_instance;  -- I don't understand why this is needed.
+    -- Above can return null; We index it anyway.
+    CDRecipe.static.itemInstances_ht[type] = item_instance;
+    CDRecipe.static.itemInstances_ht[item_instance:getFullType()] = item_instance;  -- I don't understand why this is needed.
+    -- This is placed in here so that it only triggers once.
+    if item_instance == nil then
+        print('CDBetterCrafting: Could not find result item "' .. item_instance);
     end
     return item_instance;
 end

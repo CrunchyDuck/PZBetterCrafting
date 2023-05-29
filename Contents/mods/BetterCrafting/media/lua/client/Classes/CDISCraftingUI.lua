@@ -2,13 +2,17 @@
 -- TODO: Queuing intermediate recipes.
 -- TODO: Show items that need to be unfrozen/cooked below the available items.
 -- TODO: "Minimal mode", which displays recipes in a text-only format (akin to CDDA)
--- TODO: Hiding recipes.
+-- TODO: Hiding recipes and a hidden tab.
 -- TODO: Index evolved recipes.
 -- TODO: Favourited recipes.
+-- TODO: Get ingredients from a larger radius.
 -- TODO: If the recipe list changes, try keep the thing the player had selected, selected.
 -- TODO: Sub mod that fixes some broken recipes and groups up other recipes.
 -- TODO: Mention no controller support/multiplayer testing on the mod page.
 -- TODO: Fix side of ingredients flickering if no scroll bar.
+-- TODO: Check if learning recipes adds them to the menu.
+-- TODO: Check dismantle watch recipe.
+-- TODO: Change search boxes to be &&
 require "ISUI/ISCraftingUI"
 require "CDRecipe"
 
@@ -103,20 +107,21 @@ ISCraftingUI.shouldUpdateOrder_b = false;
     ISCraftingUI.componentFilterEntry = nil
 
     ISCraftingUI.filterAll = nil
--- ]]
 
--- This should really be stored on an object somewhere, why does it need to be fetched and locally stored?
-ISCraftingUI.fontHeightSmall = getTextManager():getFontFromEnum(UIFont.Small):getLineHeight();
-ISCraftingUI.fontHeightMedium = getTextManager():getFontFromEnum(UIFont.Medium):getLineHeight();
-ISCraftingUI.favouriteXPos = 0;
-ISCraftingUI.favouriteXPad = 20;
-ISCraftingUI.favouriteStar = getTexture("media/ui/FavoriteStar.png");
-ISCraftingUI.favCheckedTex = getTexture("media/ui/FavoriteStarChecked.png");
-ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png");
+    -- This should really be stored on an object somewhere, why does it need to be fetched and locally stored?
+    ISCraftingUI.fontHeightSmall = getTextManager():getFontFromEnum(UIFont.Small):getLineHeight();
+    ISCraftingUI.fontHeightMedium = getTextManager():getFontFromEnum(UIFont.Medium):getLineHeight();
+    ISCraftingUI.favouriteXPos = 0;
+    ISCraftingUI.favouriteXPad = 20;
+    ISCraftingUI.favouriteStar = getTexture("media/ui/FavoriteStar.png");
+    ISCraftingUI.favCheckedTex = getTexture("media/ui/FavoriteStarChecked.png");
+    ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png");
+-- ]]
 
 --- Apologies for the indentation on functions.
 --- I use [[]] as a substitute for C#'s #region, which I'm fond of in game dev.
 --- The indentation is required for my text editor to collapse the contents.
+
 -- [[ Constructors
     function ISCraftingUI:new(x, y, width, height, character)
         local o = {};
@@ -534,8 +539,8 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
 -- ]]
 
 -- [[ Update functions
-    -- TODO: Might move this into update itself?
     function ISCraftingUI:Refresh()
+        -- TODO: Might move this into update itself?
         self:UpdateKnownRecipes();
         self:UpdateRecipeFilter();
         
@@ -546,75 +551,11 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
         self:UpdateRecipeOrder();
         
         self.frameCounter_i = self.frameCounter_i + 1;
-        
-        if true then return end;
-
-        local recipeListBox = self:getRecipeListBox();
-        local selectedItem = recipeListBox.items[recipeListBox.selected];
-        if selectedItem then selectedItem = selectedItem.item.recipe end
-        local selectedView = self.panel.activeView.name;
-        self:UpdateAvailableItems();  -- TODO: I'm not sure how taxing this is. Basic tests seemed fine.
-        self:populateRecipesList();
-        self:sortList();
-        for i=#self.categories,1,-1 do
-            local categoryUI = self.categories[i];
-            local found = false;
-            for j=1,#self.recipesListH do
-                if self.recipesListH[j] == categoryUI.category then
-                    found = true;
-                    break;
-                end
-            end
-            if not found then
-                self.panel:removeView(categoryUI);
-                table.remove(self.categories, i);
-            else
-                categoryUI:filter();
-            end
-        end
-        self.panel:activateView(selectedView);
-
-        if selectedItem then
-            for i,item in ipairs(recipeListBox.items) do
-                if item.item.recipe == selectedItem then
-                    recipeListBox.selected = i;
-                    break;
-                end
-            end
-        end
-        local k
-        for k = 1 , #self.recipesListH, 1 do
-            local i = self.recipesListH[k]
-            local v = self.recipesList[i]
-            local found = false;
-            for k,l in ipairs(self.categories) do
-                if i == l.category then
-                    found = true;
-                    break;
-                end
-            end
-            if not found then
-                -- local cat1 = ISCraftingCategoryUI:new(0, 0, self.width, self.panel.height - self.panel.tabHeight, self);
-                -- cat1:initialise();
-                -- local catName = getTextOrNull("IGUI_CraftCategory_"..i) or i
-                -- self.panel:addView(catName, cat1);
-                -- cat1.infoText = getText("UI_CraftingUI");
-                -- cat1.parent = self;
-                -- cat1.category = i;
-                -- for s,d in ipairs(v) do
-                --     cat1.recipes:addItem(s,d);
-                -- end
-                -- table.insert(self.categories, cat1);
-            end
-        end
-        if #recipeListBox.items == 0 then
-            self.panel:activateView(getText("IGUI_CraftCategory_General"));
-        end
-        self:refreshIngredientList()
     end
 
     function ISCraftingUI:UpdateKnownRecipes()
         -- TODO: Visible recipe only supports adding recipes for now. Add hiding support.
+        -- Index normal recipes
         local recipes = getAllRecipes();  -- Java array
         for i = 0, recipes:size() - 1 do
             local recipe = recipes:get(i);
@@ -624,18 +565,17 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
                 self.shouldUpdateOrder_b = true;
                 r = CDRecipe:New(recipe);
                 -- r:UpdateAvailability(false);
+                self:AddCDRecipe(r);
+            end
+        end
 
-                self.allRecipes_ht[recipe] = r;
-
-                if self.recipeCategories_ht[r.category_str] == nil then
-                    --- This maintains the functionality of the base game,
-                    --- where categories only appear if you can craft something in them,
-                    --- where favourite and general are the first categories,
-                    --- and where the rest are random order
-                    self.recipeCategories_ht[r.category_str] = {};
-                    self:AddCategory(r.category_str);
-                end
-                self.recipeCategories_ht[r.category_str][r] = true;
+        -- Index evolved recipes
+        local recipes = RecipeManager.getAllEvolvedRecipes();  -- java_ar[zombie.scripting.objects.EvolvedRecipe]
+        for i = 0, recipes:size() - 1 do
+            local base_recipe = recipes:get(i);
+            local recipe = CDRecipe:NewEvolved(base_recipe);
+            if recipe ~= nil then
+                self:AddCDRecipe(recipe);
             end
         end
     end
@@ -824,6 +764,12 @@ ISCraftingUI.favNotCheckedTex = getTexture("media/ui/FavoriteStarUnchecked.png")
             table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
         end
         self.shouldUpdateOrder_b = false;
+    end
+
+    -- Code largely taken from ISCraftingUI:populateRecipesList
+    function ISCraftingUI:UpdateEvolvedRecipes()
+        -- Get evolved recipes
+
     end
 -- ]]
 
@@ -1215,6 +1161,19 @@ function ISCraftingUI:AddCategory(category_name_internal)
     cat:initialise();
     self.panel:addView(cat_name, cat);
     cat.infoText = getText("UI_CraftingUI");
+end
+
+function ISCraftingUI:AddCDRecipe(cd_recipe)
+    self.allRecipes_ht[cd_recipe.baseRecipe] = cd_recipe;
+    if self.recipeCategories_ht[cd_recipe.category_str] == nil then
+        --- This maintains the functionality of the base game,
+        --- where categories only appear if you can craft something in them,
+        --- where favourite and general are the first categories,
+        --- and where the rest are random order
+        self.recipeCategories_ht[cd_recipe.category_str] = {};
+        self:AddCategory(cd_recipe.category_str);
+    end
+    self.recipeCategories_ht[cd_recipe.category_str][cd_recipe] = true;
 end
 
 function ISCraftingUI:isWaterSource(item)
