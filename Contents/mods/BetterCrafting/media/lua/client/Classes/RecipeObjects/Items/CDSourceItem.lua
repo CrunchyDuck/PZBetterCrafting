@@ -4,69 +4,59 @@
 --- which CDSourceItem fetches/derives from. Prevents repeatedly making items.
 --- Not sure how it's handled in the java though, so not sure if it's taxing.
 CDSourceItem = {};
-CDSourceItem.recipe = nil;  -- CDRecipe
 CDSourceItem.source = nil;  -- CDSource
-CDSourceItem.baseItem = nil;  -- zombie.inventory.InventoryItem, I think?
-CDSourceItem.texture = nil;
-CDSourceItem.name = "";
-CDSourceItem.fullType = "";
 CDSourceItem.numOfItem_i = 0;
-
-CDSourceItem.available_b = false;
-CDSourceItem.detailed_b = false;
-CDSourceItem.availableChanged_b = false;
 CDSourceItem.countChanged_b = false;
-CDSourceItem.anyChange_b = false;
 
 function CDSourceItem:New(recipe, source, item_instance)
-    local o = CDTools:ShallowCopy(CDSourceItem);
-    o.recipe = recipe;
-    o.source = source;
-    o.baseItem = item_instance;
-    o.fullType = item_instance:getFullType();
+    self = CDTools:InheritFrom({CDIItem, CDSourceItem});
+    self.recipe = recipe;
+    self.source = source;
+    self.baseItem = item_instance;
+    self.fullType = item_instance:getFullType();
 
     source.requiredCount_i = source.baseSource:getCount();
-    o.texture = item_instance:getTex();
+    self.texture = item_instance:getTex();
 
     -- Get the item_instance's name.
-    if o.fullType == "Base.WaterDrop" then
+    if self.fullType == "Base.WaterDrop" then
         if source.requiredCount_i == 1 then
-            o.name = getText("IGUI_CraftUI_CountOneUnit", getText("ContextMenu_WaterName"))
+            self.name = getText("IGUI_CraftUI_CountOneUnit", getText("ContextMenu_WaterName"))
         else
-            o.name = getText("IGUI_CraftUI_CountUnits", getText("ContextMenu_WaterName"), source.requiredCount_i)
+            self.name = getText("IGUI_CraftUI_CountUnits", getText("ContextMenu_WaterName"), source.requiredCount_i)
         end
         if recipe.baseRecipe:getHeat() < 0 then
-            o.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), o.name);
+            self.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), self.name);
         elseif recipe.baseRecipe:getHeat() > 0 then
-            o.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), o.name);
+            self.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), self.name);
         end
     elseif source.baseSource:getItems():size() > 1 then -- no units
-        o.name = item_instance:getDisplayName()
+        self.name = item_instance:getDisplayName()
     elseif not source.baseSource:isDestroy() and item_instance:IsDrainable() then
         if source.requiredCount_i == 1 then
-            o.name = getText("IGUI_CraftUI_CountOneUnit", item_instance:getDisplayName())
+            self.name = getText("IGUI_CraftUI_CountOneUnit", item_instance:getDisplayName())
         else
-            o.name = getText("IGUI_CraftUI_CountUnits", item_instance:getDisplayName(), source.requiredCount_i)
+            self.name = getText("IGUI_CraftUI_CountUnits", item_instance:getDisplayName(), source.requiredCount_i)
         end
         if recipe.baseRecipe:getHeat() < 0 then
-            o.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), o.name);
+            self.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Hot"), self.name);
         elseif recipe.baseRecipe:getHeat() > 0 then
-            o.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), o.name);
+            self.name = getText("IGUI_FoodTemperatureNaming", getText("IGUI_Temp_Cold"), self.name);
         end;
     elseif not source.baseSource:isDestroy() and source.baseSource:getUse() > 0 then -- food
         source.requiredCount_i = source.baseSource:getUse()
         if source.requiredCount_i == 1 then
-            o.name = getText("IGUI_CraftUI_CountOneUnit", item_instance:getDisplayName())
+            self.name = getText("IGUI_CraftUI_CountOneUnit", item_instance:getDisplayName())
         else
-            o.name = getText("IGUI_CraftUI_CountUnits", item_instance:getDisplayName(), source.requiredCount_i)
+            self.name = getText("IGUI_CraftUI_CountUnits", item_instance:getDisplayName(), source.requiredCount_i)
         end
     elseif source.requiredCount_i > 1 then
-        o.name = getText("IGUI_CraftUI_CountNumber", item_instance:getDisplayName(), source.requiredCount_i)
+        self.name = getText("IGUI_CraftUI_CountNumber", item_instance:getDisplayName(), source.requiredCount_i)
     else
-        o.name = item_instance:getDisplayName()
+        self.name = item_instance:getDisplayName()
     end
 
-    return o;
+    return self;
 end
 
 function CDSourceItem:UpdateAvailability(detailed_b)
@@ -132,5 +122,4 @@ function CDSourceItem:UpdateAvailability(detailed_b)
         self.availableChanged_b = true;
         self.anyChange_b = true;
     end
-    return;
 end

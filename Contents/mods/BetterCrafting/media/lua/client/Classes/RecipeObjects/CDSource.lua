@@ -14,7 +14,7 @@ CDSource.itemsChanged_b = false;
 CDSource.anyChange_b = false;
 
 function CDSource:New(recipe, baseSource)
-    local o = CDTools:ShallowCopy(CDSource)
+    local o = CDTools:InheritFrom({CDSource});
     o.baseSource = baseSource;
     o.recipe = recipe;
     -- Originally this was stored on the items rather than the source? why??
@@ -25,11 +25,11 @@ function CDSource:New(recipe, baseSource)
         local fullType = baseSource:getItems():get(k);
         local item_instance = nil;
         if fullType == "Water" then
-            item_instance = CDRecipe:GetItemInstance("Base.WaterDrop");
+            item_instance = recipe:GetItemInstance("Base.WaterDrop");
         elseif luautils.stringStarts(fullType, "[") then  -- Some debug thing.
-            item_instance = CDRecipe:GetItemInstance("Base.WristWatch_Right_DigitalBlack");
+            item_instance = recipe:GetItemInstance("Base.WristWatch_Right_DigitalBlack");
         else
-            item_instance = CDRecipe:GetItemInstance(fullType);
+            item_instance = recipe:GetItemInstance(fullType);
         end
 
         -- Is this ever false?

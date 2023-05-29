@@ -33,11 +33,21 @@ function CDTools:TableContains(table, item, comparison_func)
 end
 
 -- Taken from: https://stackoverflow.com/questions/1410862/concatenation-of-tables-in-lua
-function CDTools:TableConcat(t1, t2)
+function CDTools:ListConcat(t1, t2)
+    -- Avoids us writing to t1
+    local l = CDTools:ShallowCopy(t1);
     for i = 1, #t2 do
-        t1[#t1 + 1] = t2[i]
+        l[#l + 1] = t2[i];
     end
-    return t1
+    return l;
+end
+
+function CDTools:TableConcat(t1, t2)
+    local t = CDTools:ShallowCopy(t1);
+    for k, v in pairs(t2) do
+        t[k] = v;
+    end
+    return t;
 end
 
 -- AHAHAHAHHAHAHAHAHAHAHAHH
@@ -68,4 +78,15 @@ function CDTools:SplitString(str, split_char)
         table.insert(t, s);
     end
     return t
+end
+
+-- Will likely need to update this function as my style solidifies.
+function CDTools:InheritFrom(class_ar)
+    local o = {};
+    o._types = {};  -- Used for typing objects.
+    for _, obj in pairs(class_ar) do
+        o = CDTools:TableConcat(o, CDTools:ShallowCopy(obj));
+        table.insert(o._types, obj);
+    end
+    return o;
 end

@@ -14,6 +14,7 @@
 -- TODO: Check if learning recipes adds them to the menu.
 -- TODO: Check dismantle watch recipe.
 -- TODO: Change search boxes to be &&
+-- TODO: Crafting box keybinds are offset. Fix them sometime.
 -- #endregion
 require "ISUI/ISCraftingUI"
 require "CDRecipe"
@@ -494,7 +495,7 @@ function ISCraftingUI:UpdateKnownRecipes()
     for i = 0, recipes:size() - 1 do
         local base_recipe = recipes:get(i);
         if self.allRecipes_ht[base_recipe] == nil then
-            local recipe = CDRecipe:NewEvolved(base_recipe);
+            local recipe = CDEvolvedRecipe:New(base_recipe);
             if recipe ~= nil then
                 self:AddCDRecipe(recipe);
             end
@@ -584,7 +585,6 @@ function ISCraftingUI:UpdateRecipesAvailable()
     -- TODO: If performance proves to be an issue, try chunking this update.
     for _, list_item in pairs(self.recipe_listbox.items) do
         local recipe = list_item.item;
-        -- TODO: Only filter recipes if there was a change.
         recipe:UpdateAvailability(false);
         if recipe.availableChanged_b then
             self.shouldUpdateOrder_b = true;
@@ -683,7 +683,7 @@ function ISCraftingUI:UpdateRecipeOrder()
     --- Some recipes have the same names but different outputs.
     --- Without this check, they roll over each other like a rainbow every frame.
     if self.shouldUpdateOrder_b then
-        table.sort(self.recipe_listbox.items, CDRecipe.SortFromListbox);
+        table.sort(self.recipe_listbox.items, CDIRecipe.SortFromListbox);
     end
     self.shouldUpdateOrder_b = false;
 end
