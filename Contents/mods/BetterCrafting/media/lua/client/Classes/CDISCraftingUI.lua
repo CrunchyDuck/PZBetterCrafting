@@ -318,7 +318,7 @@ function ISCraftingUI:createChildren()
     self.recipe_listbox.itemheight = 2 + ISCraftingUI.fontHeightMedium + 32 + 4;
     self.recipe_listbox.selected = 0;
     -- TODO: Add recipe listbox events
-    self.recipe_listbox.doDrawItem = self.DrawRecipes;
+    self.recipe_listbox.doDrawItem = self.RenderRecipeList;
     self.recipe_listbox:setOnMouseDownFunction(self, self.OnChooseRecipe);
     -- self.recipe_listbox.onMouseDown = ISCraftingCategoryUI.onMouseDown_Recipes;
     -- self.recipe_listbox.onMouseDoubleClick = ISCraftingCategoryUI.onMouseDoubleClick_Recipes;
@@ -403,77 +403,6 @@ function ISCraftingUI:render()
         -- self.debugGiveIngredientsButton:setVisible(false);
     end
     -- TODO: Implement more from render.
-end
-
-function ISCraftingUI.DrawRecipes(recipe_listbox, y, item, alt)
-    local crafting_ui = recipe_listbox.parent;
-    local recipe = item.item;
-    local baseItemDY = 0
-    if recipe.customRecipeName then
-        baseItemDY = ISCraftingUI.fontHeightSmall
-        item.height = recipe_listbox.itemheight + baseItemDY
-    end
-
-    if y + recipe_listbox:getYScroll() >= recipe_listbox.height then return y + item.height end
-    if y + item.height + recipe_listbox:getYScroll() <= 0 then return y + item.height end
-
-    local a = 0.9;
-
-    if not recipe.available_b then
-        a = 0.3;
-    end
-
-    recipe_listbox:drawRectBorder(0, (y), recipe_listbox:getWidth(), item.height - 1, a, recipe_listbox.borderColor.r, recipe_listbox.borderColor.g, recipe_listbox.borderColor.b);
-
-    if recipe_listbox.selected == item.index then
-        recipe_listbox:drawRect(0, (y), recipe_listbox:getWidth(), item.height - 1, 0.3, 0.7, 0.35, 0.15);
-    end
-
-    recipe_listbox:drawText(recipe.baseRecipe:getName(), 6, y + 2, 1, 1, 1, a, UIFont.Medium);
-    -- if recipe.customRecipeName then
-    --     recipe_listbox:drawText(recipe.customRecipeName, 6, y + 2 + recipe_listbox.fontHeightMedium, 1, 1, 1, a, UIFont.Small);
-    -- end
-
-    local textWidth = 0;
-    if recipe.texture then
-        local texWidth = recipe.texture:getWidthOrig();
-        local texHeight = recipe.texture:getHeightOrig();
-        if texWidth <= 32 and texHeight <= 32 then
-            local tx = 6 + (32 - texWidth) / 2;
-            local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY + (32 - texHeight) / 2;
-            recipe_listbox:drawTexture(recipe.texture, tx, ty, a, 1, 1, 1);
-        else
-            local tx = 6;
-            local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY;
-            recipe_listbox:drawTextureScaledAspect(recipe.texture, 6, ty, 32, 32, a, 1, 1, 1);
-        end
-        -- local name = recipe.evolved and recipe.resultName or recipe.itemName
-        local name = recipe.outputName_str;
-        local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY + (32 - crafting_ui.fontHeightSmall) / 2 - 2;
-        recipe_listbox:drawText(name, texWidth + 20, ty, 1, 1, 1, a, UIFont.Small);
-    end
-
-    local star_icon = nil
-    local favouriteAlpha = a
-    -- Hovering recipe
-    if item.index == recipe_listbox.mouseoverselected and not recipe_listbox:isMouseOverScrollBar() then
-        if recipe_listbox:getMouseX() >= crafting_ui.favouriteXPos then
-            star_icon = recipe.favourite and crafting_ui.favCheckedTex or crafting_ui.favNotCheckedTex
-            favouriteAlpha = 0.9
-        else
-            star_icon = recipe.favourite and crafting_ui.favouriteStar or crafting_ui.favNotCheckedTex
-            favouriteAlpha = recipe.favourite and a or 0.3
-        end
-    elseif recipe.favourite then
-        star_icon = crafting_ui.favouriteStar
-    end
-
-    if star_icon then
-        local ty = y + (item.height / 2 - star_icon:getHeight() / 2);
-        recipe_listbox:drawTexture(star_icon, crafting_ui.favouriteXPos, ty, favouriteAlpha, 1, 1, 1);
-    end
-
-    return y + item.height;
 end
 
 function ISCraftingUI:setVisible(visible_b)
@@ -564,9 +493,11 @@ function ISCraftingUI:UpdateKnownRecipes()
     local recipes = RecipeManager.getAllEvolvedRecipes();  -- java_ar[zombie.scripting.objects.EvolvedRecipe]
     for i = 0, recipes:size() - 1 do
         local base_recipe = recipes:get(i);
-        local recipe = CDRecipe:NewEvolved(base_recipe);
-        if recipe ~= nil then
-            self:AddCDRecipe(recipe);
+        if self.allRecipes_ht[base_recipe] == nil then
+            local recipe = CDRecipe:NewEvolved(base_recipe);
+            if recipe ~= nil then
+                self:AddCDRecipe(recipe);
+            end
         end
     end
 end
@@ -765,6 +696,74 @@ end
 -- #endregion
 
 -- #region Render functions
+function ISCraftingUI.RenderRecipeList(recipe_listbox, y, item, alt)
+    local crafting_ui = recipe_listbox.parent;
+    local recipe = item.item;
+    local baseItemDY = 0
+    if recipe.customRecipeName then
+        baseItemDY = ISCraftingUI.fontHeightSmall
+        item.height = recipe_listbox.itemheight + baseItemDY
+    end
+
+    if y + recipe_listbox:getYScroll() >= recipe_listbox.height then return y + item.height end
+    if y + item.height + recipe_listbox:getYScroll() <= 0 then return y + item.height end
+
+    local a = 0.9;
+    if not recipe.available_b then
+        a = 0.3;
+    end
+
+    recipe_listbox:drawRectBorder(0, (y), recipe_listbox:getWidth(), item.height - 1, a, recipe_listbox.borderColor.r, recipe_listbox.borderColor.g, recipe_listbox.borderColor.b);
+    if recipe_listbox.selected == item.index then
+        recipe_listbox:drawRect(0, (y), recipe_listbox:getWidth(), item.height - 1, 0.3, 0.7, 0.35, 0.15);
+    end
+    recipe_listbox:drawText(recipe.baseRecipe:getName(), 6, y + 2, 1, 1, 1, a, UIFont.Medium);
+    -- if recipe.customRecipeName then
+    --     recipe_listbox:drawText(recipe.customRecipeName, 6, y + 2 + recipe_listbox.fontHeightMedium, 1, 1, 1, a, UIFont.Small);
+    -- end
+
+    local textWidth = 0;
+    if recipe.texture then
+        local texWidth = recipe.texture:getWidthOrig();
+        local texHeight = recipe.texture:getHeightOrig();
+        if texWidth <= 32 and texHeight <= 32 then
+            local tx = 6 + (32 - texWidth) / 2;
+            local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY + (32 - texHeight) / 2;
+            recipe_listbox:drawTexture(recipe.texture, tx, ty, a, 1, 1, 1);
+        else
+            local tx = 6;
+            local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY;
+            recipe_listbox:drawTextureScaledAspect(recipe.texture, 6, ty, 32, 32, a, 1, 1, 1);
+        end
+        -- local name = recipe.evolved and recipe.resultName or recipe.itemName
+        local name = recipe.outputName_str;
+        local ty = y + 2 + crafting_ui.fontHeightMedium + baseItemDY + (32 - crafting_ui.fontHeightSmall) / 2 - 2;
+        recipe_listbox:drawText(name, texWidth + 20, ty, 1, 1, 1, a, UIFont.Small);
+    end
+
+    local star_icon = nil
+    local favouriteAlpha = a
+    -- Hovering recipe
+    if item.index == recipe_listbox.mouseoverselected and not recipe_listbox:isMouseOverScrollBar() then
+        if recipe_listbox:getMouseX() >= crafting_ui.favouriteXPos then
+            star_icon = recipe.favourite and crafting_ui.favCheckedTex or crafting_ui.favNotCheckedTex
+            favouriteAlpha = 0.9
+        else
+            star_icon = recipe.favourite and crafting_ui.favouriteStar or crafting_ui.favNotCheckedTex
+            favouriteAlpha = recipe.favourite and a or 0.3
+        end
+    elseif recipe.favourite then
+        star_icon = crafting_ui.favouriteStar
+    end
+
+    if star_icon then
+        local ty = y + (item.height / 2 - star_icon:getHeight() / 2);
+        recipe_listbox:drawTexture(star_icon, crafting_ui.favouriteXPos, ty, favouriteAlpha, 1, 1, 1);
+    end
+
+    return y + item.height;
+end
+
 function ISCraftingUI:RenderRecipeDetails(position, recipe)
     -- Render recipe preview
     self:drawRectBorder(position.x, position.y, 32 + 10, 32 + 10, 1.0, 1.0, 1.0, 1.0);

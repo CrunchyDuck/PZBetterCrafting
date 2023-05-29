@@ -89,9 +89,15 @@ function CDRecipe:NewEvolved(recipe)
     return o;
 end
 
--- Returns true if a state happened, false if not.
--- In non-detailed mode, it will only return "true" if the recipe state changed.
 function CDRecipe:UpdateAvailability(detailed_b)
+    if not self.evolved then
+        self:UpdateBasicRecipe(detailed_b);
+    else
+        self:UpdateEvolvedRecipe(detailed_b);
+    end
+end
+
+function CDRecipe:UpdateBasicRecipe(detailed_b)
     self.detailed_b = detailed_b;
     local last_available = self.available_b;
     self.available_b = true;
@@ -118,7 +124,10 @@ function CDRecipe:UpdateAvailability(detailed_b)
         self.availableChanged_b = true;
         self.anyChange_b = true;
     end
-    return;
+end
+
+function CDRecipe:UpdateEvolvedRecipe(detailed_b)
+    
 end
 
 -- From ISCraftingUI:GetItemInstance
