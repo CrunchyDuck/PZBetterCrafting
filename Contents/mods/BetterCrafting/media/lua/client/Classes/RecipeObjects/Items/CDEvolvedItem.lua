@@ -92,3 +92,12 @@ function CDEvolvedItem:UpdateAvailability(detailed_b)
         self.anyChange_b = true;
     end
 end
+
+-- try to get an instance of this item from our items list
+function CDEvolvedItem:GetItem()
+    local matching_items = ISCraftingUI.instance.availableItems_ht[self.fullType];
+    if not matching_items or #matching_items < 1 then return; end
+
+    -- For now I just get the first; In the future, better sorting method.
+    return matching_items[1];
+end

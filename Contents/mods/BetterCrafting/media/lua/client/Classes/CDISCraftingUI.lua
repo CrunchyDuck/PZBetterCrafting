@@ -348,8 +348,6 @@ function ISCraftingUI:render()
     ISCollapsableWindow.render(self);
     if self.isCollapsed then return end
 
-    local multipleItemEvolvedRecipes = {};
-    self.addIngredientButton:setVisible(false);
     local resize_handle_height = self.resizable and self:resizeWidgetHeight() or 0
     self:drawRectBorder(0, 0, self:getWidth(), self:getHeight(), self.borderColor.a, self.borderColor.r,self.borderColor.g,self.borderColor.b);
     self.javaObject:DrawTextureScaledColor(nil, 0, self:getHeight() - resize_handle_height - ISCraftingUI.bottomInfoHeight, self:getWidth(), 1, self.borderColor.r, self.borderColor.g,self.borderColor.b,self.borderColor.a);
@@ -375,29 +373,9 @@ function ISCraftingUI:render()
     if recipe == nil then
         return;
     end
+
     recipe = recipe.item;
     self:RenderRecipeDetails(position, recipe);
-
-    if not recipe.evolved then
-        -- local now = getTimestampMs()
-        -- if not self.refreshTypesAvailableMS or (self.refreshTypesAvailableMS + 500 < now) then
-        --     self.refreshTypesAvailableMS = now
-        --     local typesAvailable = self:getAvailableItemsType();
-        --     self.needRefreshIngredientPanel = self.needRefreshIngredientPanel or areTablesDifferent(selectedItem.typesAvailable, typesAvailable);
-        --     selectedItem.typesAvailable = typesAvailable;
-        -- end
-        -- self:UpdateAvailableItems();
-        -- recipe.available = RecipeManager.IsRecipeValid(recipe.baseRecipe, self.character, nil, self.containerList);
-        self.craftOneButton:setVisible(true);
-        self.craftAllButton:setVisible(true);
-        -- self.debugGiveIngredientsButton:setVisible(getDebug());
-        -- self.debugGiveIngredientsButton:setX(self.craftAllButton:getRight() + 5)
-        -- self.debugGiveIngredientsButton:setY(position.y);
-    else
-        self.craftOneButton:setVisible(false);
-        self.craftAllButton:setVisible(false);
-        -- self.debugGiveIngredientsButton:setVisible(false);
-    end
     -- TODO: Implement more from render.
 end
 
@@ -854,15 +832,6 @@ function ISCraftingUI:RenderRecipeDetails(position, recipe)
 end
 
 function ISCraftingUI:RenderBasicRecipeDetails(pos, recipe)
-    -- I'm not sure what this does.
-    --  if not selectedItem.evolved then
-    --     local now = getTimestampMs()
-    --     if not self.refreshTypesAvailableMS or (self.refreshTypesAvailableMS + 500 < now) then
-    --         self.refreshTypesAvailableMS = now
-    --         local typesAvailable = self:getAvailableItemsType();
-    --         self.needRefreshIngredientPanel = self.needRefreshIngredientPanel or areTablesDifferent(selectedItem.typesAvailable, typesAvailable);
-    --         selectedItem.typesAvailable = typesAvailable;
-    --     end
     self.craftOneButton:setVisible(true);
     self.craftAllButton:setVisible(true);
     -- self.debugGiveIngredientsButton:setVisible(getDebug());
@@ -974,16 +943,12 @@ function ISCraftingUI:RenderEvolvedRecipeDetails(pos, recipe)
     self.addIngredientButton:setX(self.ingredientPanel:getX());
     self.addIngredientButton:setY(self.ingredientPanel:getY() + self.ingredientPanel:getHeight() + 10);
     self.addIngredientButton:setVisible(true);
-    if recipe.available_b then
+
+    local item = self:GetListboxSelected(self.ingredientPanel);
+    if item and item.item.available_b then
         self.addIngredientButton.enable = true;
     else
         self.addIngredientButton.enable = false;
-    end
-    local item = self.ingredientPanel.items[self.ingredientPanel.selected]
-    if not item or not item.item.available then
-        self.addIngredientButton.enable = false;
-    else
-        self.addIngredientButton.enable = true;
     end
 
     pos.y = self.ingredientPanel:getBottom()
@@ -1216,6 +1181,48 @@ function ISCraftingUI.ReturnItemsToOriginalContainer(playerObj, items)
         end
     end
 end
+
+-- TODO: Add double clicking
+function ISCraftingUI:onDblClickIngredientListbox(data)
+    if data and data.available then
+        self:addItemInEvolvedRecipe(data)
+    end
+end
+
+function ISCraftingUI:onAddRandomIngredient(button)
+    self:addItemInEvolvedRecipe(button.list[ZombRand(1, #button.list+1)]);
+end
+
+function ISCraftingUI:onAddIngredient()
+    local item = self:GetListboxSelected(self.ingredientPanel);
+    if item and item.item.available_b then
+        self:addItemInEvolvedRecipe(item.item);
+    end
+end
+
+function ISCraftingUI:addItemInEvolvedRecipe(ingredient)
+    local returnToContainer = {};
+    local item_instance = ingredient:GetItem();
+    local base_item = ingredient.recipe:GetBaseItem();
+    if not item_instance or not base_item then return; end
+
+    -- Get ingredient
+    if not self.character:getInventory():contains(item_instance) then
+        ISTimedActionQueue.add(ISInventoryTransferAction:new(self.character, item_instance, item_instance:getContainer(), self.character:getInventory(), nil));
+        table.insert(returnToContainer, item_instance)
+    end
+
+    -- Get recipe base
+    if not self.character:getInventory():contains(base_item) then -- take the base item if it's not in our inventory
+        ISTimedActionQueue.add(ISInventoryTransferAction:new(self.character, base_item, base_item:getContainer(), self.character:getInventory(), nil));
+        table.insert(returnToContainer, base_item)
+    end
+
+    ISTimedActionQueue.add(ISAddItemInRecipe:new(self.character, ingredient.recipe.baseRecipe, base_item, item_instance, (70 - self.character:getPerkLevel(Perks.Cooking))));
+    self.craftInProgress = true;
+    ISCraftingUI.ReturnItemsToOriginalContainer(self.character, returnToContainer);
+    -- self:Refresh();
+end
 -- #endregion
 
 -- #region Tidying functions
@@ -1385,23 +1392,6 @@ function ISCraftingUI:removeExtraClothingItemsFromList(index, item, itemList)
         if self:isExtraClothingItemOf(item, item2) then
             table.remove(itemList, k)
         end
-    end
-end
-
-function ISCraftingUI:onDblClickIngredientListbox(data)
-    if data and data.available then
-        self:addItemInEvolvedRecipe(data)
-    end
-end
-
-function ISCraftingUI:onAddRandomIngredient(button)
-    self:addItemInEvolvedRecipe(button.list[ZombRand(1, #button.list+1)]);
-end
-
-function ISCraftingUI:onAddIngredient()
-    local item = self:GetListboxSelected(self.ingredientPanel);
-    if item and item.item.available then
-        self:addItemInEvolvedRecipe(item.item);
     end
 end
 
@@ -1590,22 +1580,6 @@ function ISCraftingUI:onResize()
             button:setX(self.ingredientPanel:getRight() + 10)
         end
     end
-end
-
-function ISCraftingUI:addItemInEvolvedRecipe(button)
-        local returnToContainer = {};
-        if not self.character:getInventory():contains(button.item) then -- take the item if it's not in our inventory
-            ISTimedActionQueue.add(ISInventoryTransferAction:new(self.character, button.item, button.item:getContainer(), self.character:getInventory(), nil));
-            table.insert(returnToContainer, button.item)
-        end
-        if not self.character:getInventory():contains(button.baseItem) then -- take the base item if it's not in our inventory
-            ISTimedActionQueue.add(ISInventoryTransferAction:new(self.character, button.baseItem, button.baseItem:getContainer(), self.character:getInventory(), nil));
-            table.insert(returnToContainer, button.baseItem)
-        end
-        ISTimedActionQueue.add(ISAddItemInRecipe:new(self.character, button.recipe, button.baseItem, button.item, (70 - self.character:getPerkLevel(Perks.Cooking))));
-        self.craftInProgress = true;
-        ISCraftingUI.ReturnItemsToOriginalContainer(self.character, returnToContainer);
-    self:Refresh();
 end
 
 function ISCraftingUI:onCraftComplete(completedAction, recipe, container, containers)

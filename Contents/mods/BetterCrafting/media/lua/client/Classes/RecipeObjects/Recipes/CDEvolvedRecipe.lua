@@ -98,3 +98,12 @@ function CDEvolvedRecipe:CheckIngredients(detailed_b)
     end
     return found_item;
 end
+
+-- try to get an instance of our baseItem from our items list
+function CDEvolvedRecipe:GetBaseItem()
+    local matching_items = ISCraftingUI.instance.availableItems_ht[self.baseItem:getFullType()];
+    if not matching_items or #matching_items < 1 then return; end
+
+    -- For now I just get the first; In the future, better sorting method.
+    return matching_items[1];
+end
