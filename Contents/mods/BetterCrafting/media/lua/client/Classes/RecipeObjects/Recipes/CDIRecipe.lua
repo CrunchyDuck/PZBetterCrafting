@@ -1,6 +1,5 @@
 -- Generic recipe passed around.
 CDIRecipe = {};
-CDIRecipe.UID = 0;  -- Little unique identifier that is given to each instance of a recipe.
 CDIRecipe.baseRecipe = nil;  -- zombie.scripting.objects.Recipe
 CDIRecipe.resultItem = nil;
 CDIRecipe.texture = nil;
@@ -28,7 +27,6 @@ function CDIRecipe:Inherit()
 
     -- Add its own dna
     obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
-    CDIRecipe.UID = CDIRecipe.UID + 1;
     -- Update its types
     obj._types[self] = true;
     return obj;

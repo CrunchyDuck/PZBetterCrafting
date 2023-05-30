@@ -512,7 +512,7 @@ function ISCraftingUI:UpdateRecipeFilter()
     for k, _ in pairs(recipes_list) do
         i = i + 1;
         self.recipe_listbox:addItem(k.outputName_str, k);
-        if selected_item and k.UID == selected_item.item.UID then
+        if selected_item and k == selected_item.item then
             self.recipe_listbox.selected = i;
         end
     end
@@ -707,7 +707,7 @@ function ISCraftingUI:UpdateRecipeOrder()
     local i = 0;
     for k, v in pairs(self.recipe_listbox.items) do
         i = i + 1;
-        if v.item.UID == selected_item.item.UID then
+        if v.item == selected_item.item then
             self.recipe_listbox.selected = i;
             return;
         end
