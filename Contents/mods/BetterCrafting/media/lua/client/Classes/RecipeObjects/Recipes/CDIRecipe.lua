@@ -28,7 +28,7 @@ function CDIRecipe:Inherit()
     -- Add its own dna
     obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
     -- Update its types
-    obj._types = CDTools:TableConcat({self = true}, obj._types);
+    obj._types[self] = true;
     return obj;
 end
 
@@ -43,7 +43,7 @@ function CDIRecipe:GetItemInstance(type)
     CDIRecipe.static.itemInstances_ht[item_instance:getFullType()] = item_instance;  -- I don't understand why this is needed.
     -- This is placed in here so that it only triggers once.
     if item_instance == nil then
-        print('CDBetterCrafting: Could not find result item "' .. item_instance);
+        print('CDBetterCrafting: Could not find result item "' .. item_instance .. '"');
     end
     return item_instance;
 end

@@ -17,7 +17,7 @@ function CDIItem:Inherit()
     -- Add its own dna
     obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
     -- Update its types
-    obj._types = CDTools:TableConcat({self = true}, obj._types);
+    obj._types[self] = true;
     return obj;
 end
 

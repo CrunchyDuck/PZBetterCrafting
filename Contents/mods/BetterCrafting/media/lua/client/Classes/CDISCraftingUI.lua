@@ -1036,7 +1036,7 @@ function ISCraftingUI:craft(button, all)
     if recipe.evolved then return; end
     -- TODO: Implement my logic for recipe validity.
     if not RecipeManager.IsRecipeValid(recipe.baseRecipe, self.character, nil, self.containerList) then
-        print("CDDebug: Recipe marked as valid, but was actually invalid!");
+        print("CDBetterCrafting: Recipe marked as valid, but was actually invalid!");
         return;
     end
     if not getPlayer() then return; end
@@ -1155,7 +1155,7 @@ end
 
 function ISCraftingUI:AddCategory(category_name_internal)
     if self.categories_hs[category_name_internal] ~= nil then
-        print("CDCrafting ERROR: Tried to create a category that already exists!");
+        print("CDBetterCrafting: Tried to create a category that already exists!");
         return;
     end
     self.categories_hs[category_name_internal] = true;
