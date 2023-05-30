@@ -9,7 +9,9 @@ CDSourceItem.numOfItem_i = 0;
 CDSourceItem.countChanged_b = false;
 
 function CDSourceItem:New(recipe, source, item_instance)
-    self = CDTools:InheritFrom({CDIItem, CDSourceItem});
+    -- self = CDTools:InheritFrom({CDIItem, CDSourceItem});
+    self = CDSourceItem:Inherit();
+
     self.recipe = recipe;
     self.source = source;
     self.baseItem = item_instance;
@@ -57,6 +59,17 @@ function CDSourceItem:New(recipe, source, item_instance)
     end
 
     return self;
+end
+
+function CDSourceItem:Inherit()
+    -- Get a copy of its parents
+    local obj = CDIItem:Inherit();
+
+    -- Add its own dna
+    obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
+    -- Update its types
+    obj._types = CDTools:TableConcat({self = true}, obj._types);
+    return obj;
 end
 
 function CDSourceItem:UpdateAvailability(detailed_b)

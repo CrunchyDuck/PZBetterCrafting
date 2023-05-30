@@ -1,7 +1,7 @@
 CDEvolvedItem = {};
 
 function CDEvolvedItem:New(recipe, item_instance)
-    self = CDTools:InheritFrom({CDIItem, CDEvolvedItem});
+    self = CDEvolvedItem:Inherit();
     self.recipe = recipe;
     self.baseItem = item_instance;
     self.fullType = item_instance:getFullType();
@@ -11,6 +11,17 @@ function CDEvolvedItem:New(recipe, item_instance)
     self.texture = item_instance:getTex();
 
     return self;
+end
+
+function CDEvolvedItem:Inherit()
+    -- Get a copy of its parents
+    local obj = CDIItem:Inherit();
+
+    -- Add its own dna
+    obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
+    -- Update its types
+    obj._types = CDTools:TableConcat({self = true}, obj._types);
+    return obj;
 end
 
 function CDEvolvedItem:UpdateAvailability(detailed_b)

@@ -21,6 +21,17 @@ CDIRecipe.anyChange_b = false;
 CDIRecipe.static = {};
 CDIRecipe.static.itemInstances_ht = {};
 
+function CDIRecipe:Inherit()
+    -- Get a copy of its parents
+    local obj = CDBaseClass:Inherit();
+
+    -- Add its own dna
+    obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
+    -- Update its types
+    obj._types = CDTools:TableConcat({self = true}, obj._types);
+    return obj;
+end
+
 -- From ISCraftingUI:GetItemInstance
 function CDIRecipe:GetItemInstance(type)
     local item_instance = CDIRecipe.static.itemInstances_ht[type];

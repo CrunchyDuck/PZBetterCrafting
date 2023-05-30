@@ -13,14 +13,25 @@ CDSource.availableChanged_b = false;
 CDSource.itemsChanged_b = false;
 CDSource.anyChange_b = false;
 
-function CDSource:New(recipe, baseSource)
-    local o = CDTools:InheritFrom({CDSource});
-    o.baseSource = baseSource;
-    o.recipe = recipe;
-    -- Originally this was stored on the items rather than the source? why??
-    o.requiredCount_i = baseSource:getCount();
+function CDSource:Inherit()
+    -- Get a copy of its parents
+    local obj = CDBaseClass:Inherit();
 
-    o.items_ar = {};
+    -- Add its own dna
+    obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
+    -- Update its types
+    obj._types = CDTools:TableConcat({self = true}, obj._types);
+    return obj;
+end
+
+function CDSource:New(recipe, baseSource)
+    self = self:Inherit();
+    self.baseSource = baseSource;
+    self.recipe = recipe;
+    -- Originally this was stored on the items rather than the source? why??
+    self.requiredCount_i = baseSource:getCount();
+
+    self.items_ar = {};
     for k = 0, baseSource:getItems():size() - 1 do
         local fullType = baseSource:getItems():get(k);
         local item_instance = nil;
@@ -34,12 +45,12 @@ function CDSource:New(recipe, baseSource)
 
         -- Is this ever false?
         if item_instance then
-            local cditem = CDSourceItem:New(recipe, o, item_instance);
-            table.insert(o.items_ar, cditem);
+            local cditem = CDSourceItem:New(recipe, self, item_instance);
+            table.insert(self.items_ar, cditem);
         end
     end
 
-    return o;
+    return self;
 end
 
 function CDSource:UpdateAvailability(detailed_b)

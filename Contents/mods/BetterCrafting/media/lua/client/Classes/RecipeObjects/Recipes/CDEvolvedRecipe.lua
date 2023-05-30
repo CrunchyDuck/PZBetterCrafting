@@ -4,7 +4,7 @@ CDEvolvedRecipe = {};
 CDEvolvedRecipe.evolvedItems_ar = nil;
 
 function CDEvolvedRecipe:New(base_recipe)
-    self = CDTools:InheritFrom({CDIRecipe, CDEvolvedRecipe});
+    self = self:Inherit();
     self.evolvedItems_ar = {};
     self.resultItem = self:GetItemInstance(base_recipe:getFullResultItem());
     if not self.resultItem then
@@ -30,4 +30,15 @@ function CDEvolvedRecipe:New(base_recipe)
     end
 
     return self;
+end
+
+function CDEvolvedRecipe:Inherit()
+    -- Get a copy of its parents
+    local obj = CDIRecipe:Inherit();
+
+    -- Add its own dna
+    obj = CDTools:TableConcat(obj, CDTools:DeepCopy(self));
+    -- Update its types
+    obj._types = CDTools:TableConcat({self = true}, obj._types);
+    return obj;
 end

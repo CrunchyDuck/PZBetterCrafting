@@ -9,6 +9,20 @@ function CDTools:ShallowCopy(t)
     return t2;
 end
 
+
+function CDTools:DeepCopy(t)
+    local ret = {}
+    if type(t) == "table" then
+        for k, v in pairs(t) do
+            ret[k] = CDTools:DeepCopy(v);
+        end
+    else
+        ret = t;
+    end
+
+    return ret;
+end
+
 -- Taken from: https://www.programming-idioms.org/idiom/10/shuffle-a-list/2019/lua
 function CDTools:FisherYatesShuffle(x)
     for i = #x, 2, -1 do
