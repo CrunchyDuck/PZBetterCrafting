@@ -59,35 +59,6 @@ function CDRecipe:New(recipe)
     return self;
 end
 
--- function CDRecipe:NewEvolved(recipe)
---     self = CDTools:ShallowCopy(CDRecipe);
---     self.evolvedItems_ar = {};
---     self.resultItem = self:GetItemInstance(recipe:getFullResultItem());
---     if not self.resultItem then
---         return;
---     end
---     self.evolved = true;
---     self.category_str = "Cooking";  -- Evo are only cooking recipes right now.
---     self.baseRecipe = recipe;
-
---     self.texture = self.resultItem:getTex();
---     self.outputName_str = self.resultItem:getDisplayName();
-
---     -- Things in the original evolved recipe code I haven't found a use for yet.
---     -- self.itemName = recipe:getName();
---     -- self.baseItem = self:GetItemInstance(evolvedRecipe:getModule():getName() .. "." .. evolvedRecipe:getBaseItem())
-
---     local possible_items = recipe:getPossibleItems();
---     for i = 0, possible_items:size() - 1 do
---         local item = possible_items:get(i);
---         local instance = self:GetItemInstance(item:getFullType());
---         local evo_item = CDEvolvedItem:New(self, instance);
---         table.insert(self.evolvedItems_ar, evo_item);
---     end
-
---     return self;
--- end
-
 function CDRecipe:UpdateAvailability(detailed_b)
     self.detailed_b = detailed_b;
     local last_available = self.available_b;
@@ -116,7 +87,3 @@ function CDRecipe:UpdateAvailability(detailed_b)
         self.anyChange_b = true;
     end
 end
-
--- function CDRecipe:UpdateEvolvedRecipe(detailed_b)
-    
--- end

@@ -17,6 +17,7 @@
 -- TODO: Crafting box keybinds are offset. Fix them sometime.
 -- TODO: Test lag with Hydrocraft.
 -- TODO: Test with Craft Helper
+-- TODO: When displaying evolved recipe ingredients, provide a number of that ingredient rather than multiple in list.
 -- #endregion
 require "ISUI/ISCraftingUI"
 require "CDRecipe"
@@ -693,22 +694,13 @@ function ISCraftingUI:UpdateIngredientsEvolved(recipe)
 
     table.sort(available, function(a, b) return not string.sort(a.name, b.name) end)
     table.sort(unavailable, function(a, b) return not string.sort(a.name, b.name) end)
-    print("CDDebug: " .. tostring(CDTools:CountTable(available)));
 
     for _, item in ipairs(available) do
-        -- if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
-            -- self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-        -- else
         self.ingredientPanel:addItem(item.name, item)
-        -- end
     end
 
     for _, item in ipairs(unavailable) do
-        -- if #source.items_ar > 1 and item.source.requiredCount_i > 1 then
-        --     self.ingredientPanel:addItem(getText("IGUI_CraftUI_CountNumber", item.name, item.source.requiredCount_i), item)
-        -- else
         self.ingredientPanel:addItem(item.name, item)
-        -- end
     end
     self.ingredientPanel.doDrawItem = ISCraftingUI.RenderEvolvedIngredient;
 end
@@ -922,22 +914,29 @@ function ISCraftingUI:RenderEvolvedRecipeDetails(pos, recipe)
         if recipe.extraItems and #recipe.extraItems > 0 then
             self:drawText(getText("IGUI_CraftUI_AlreadyContainsItems"), pos.x, pos.y, 1,1,1,1, UIFont.Medium);
             pos.y = pos.y + ISCraftingUI.mediumFontHeight + 7;
+
             self:drawText(self.LabelDash, pos.x + offset, pos.y + dyText, r,g,b,1, UIFont.Small);
             local newX = pos.x + offset + labelWidth + imgPadX;
+
             for _, h in ipairs(recipe.extraItems) do
                 self:drawTextureScaledAspect(h, newX, pos.y, imgW, imgH, g2,r2,b2,g2);
                 newX = newX + 22;
             end
+
             if self.character and self.character:isKnownPoison(recipe.baseItem) and self.PoisonTexture then
                 self:drawTexture(self.PoisonTexture, newX, pos.y + (imgH - self.PoisonTexture:getHeight()) / 2, 1,r2,g2,b2)
             end
+
             pos.y = pos.y + ISCraftingUI.mediumFontHeight + 7;
         elseif self.character and self.character:isKnownPoison(recipe.baseItem) and self.PoisonTexture then
             self:drawText(getText("IGUI_CraftUI_AlreadyContainsItems"), pos.x, pos.y, 1,1,1,1, UIFont.Medium);
             pos.y = pos.y + ISCraftingUI.mediumFontHeight + 7;
+
             self:drawText(self.LabelDash, pos.x + offset, pos.y + dyText, r,g,b,1, UIFont.Small);
             local newX = pos.x + offset + labelWidth + imgPadX;
+
             self:drawTexture(self.PoisonTexture, newX, pos.y + (imgH - self.PoisonTexture:getHeight()) / 2, 1,r2,g2,b2)
+            
             pos.y = pos.y + ISCraftingUI.smallFontHeight + 7;
         end
     end
