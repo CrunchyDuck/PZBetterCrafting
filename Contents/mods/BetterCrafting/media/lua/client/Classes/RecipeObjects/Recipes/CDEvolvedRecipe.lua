@@ -2,6 +2,8 @@
 CDEvolvedRecipe = {};
 
 CDEvolvedRecipe.evolvedItems_ar = nil;
+CDEvolvedRecipe.baseItem = nil;
+-- TODO: Figure out extraItems
 
 function CDEvolvedRecipe:New(base_recipe)
     self = self:Inherit();
@@ -19,7 +21,7 @@ function CDEvolvedRecipe:New(base_recipe)
 
     -- Things in the original evolved recipe code I haven't found a use for yet.
     -- self.itemName = recipe:getName();
-    -- self.baseItem = self:GetItemInstance(evolvedRecipe:getModule():getName() .. "." .. evolvedRecipe:getBaseItem())
+    self.baseItem = self:GetItemInstance(base_recipe:getModule():getName() .. "." .. base_recipe:getBaseItem())
 
     local possible_items = base_recipe:getPossibleItems();
     for i = 0, possible_items:size() - 1 do
