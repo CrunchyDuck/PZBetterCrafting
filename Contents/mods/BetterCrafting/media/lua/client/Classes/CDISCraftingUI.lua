@@ -511,10 +511,11 @@ function ISCraftingUI:UpdateRecipeFilter()
     self.shouldUpdateOrder_b = true;
     
     self.currentCategory_str = self.panel.activeView.name;
-    local s = self.recipe_listbox.selected;
+    local selected_item = self:GetListboxSelected(self.recipe_listbox);
     self.recipe_listbox:clear();
+    self.recipe_listbox.selected = -1;
     -- self.recipe_listbox:setScrollHeight(0);
-    self.recipe_listbox.selected = s;
+    -- self.recipe_listbox.selected = s;
     
     local recipes_list = nil;
     if all_b then
@@ -529,8 +530,13 @@ function ISCraftingUI:UpdateRecipeFilter()
 
     recipes_list = self:FilterRecipes(recipes_list);
 
+    local i = 0;
     for k, _ in pairs(recipes_list) do
+        i = i + 1;
         self.recipe_listbox:addItem(k.outputName_str, k);
+        if selected_item and k.UID == selected_item.item.UID then
+            self.recipe_listbox.selected = i;
+        end
     end
 
 end
@@ -708,10 +714,28 @@ end
 function ISCraftingUI:UpdateRecipeOrder()
     --- Some recipes have the same names but different outputs.
     --- Without this check, they roll over each other like a rainbow every frame.
-    if self.shouldUpdateOrder_b then
-        table.sort(self.recipe_listbox.items, CDIRecipe.SortFromListbox);
+    if not self.shouldUpdateOrder_b then
+        return;
     end
     self.shouldUpdateOrder_b = false;
+    local selected_item = self:GetListboxSelected(self.recipe_listbox);
+
+    table.sort(self.recipe_listbox.items, CDIRecipe.SortFromListbox);
+
+    if not selected_item then
+        return;
+    end
+
+    local i = 0;
+    for k, v in pairs(self.recipe_listbox.items) do
+        i = i + 1;
+        if v.item.UID == selected_item.item.UID then
+            self.recipe_listbox.selected = i;
+            return;
+        end
+    end
+    -- Fallback; shouldn't happen.
+    self.recipe_listbox.selected = -1;
 end
 
 -- Code largely taken from ISCraftingUI:populateRecipesList
