@@ -18,6 +18,8 @@
 -- TODO: Test lag with Hydrocraft.
 -- TODO: Test with Craft Helper
 -- TODO: When displaying evolved recipe ingredients, provide a number of that ingredient rather than multiple in list.
+-- TODO: Check if any mods use evolved recipes for non-cooking.
+-- TODO: Stale meat caused issues with evolved recipes.
 -- #endregion
 require "ISUI/ISCraftingUI"
 require "CDRecipe"
@@ -41,6 +43,7 @@ ISCraftingUI.downArrow = Keyboard.KEY_DOWN;
 ISCraftingUI.frameCounter_i = 0;
 ISCraftingUI.baseRecipes_ar = {};  -- hs[zombie.scripting.objects.Recipe].
 ISCraftingUI.allRecipes_ht = {};  -- ht[zombie.scripting.objects.Recipe, recipe]. Technically just all known recipes, but this is snappier.
+ISCraftingUI.evolvedRecipeInstances_ht = {} -- ht[int, ar[CDEvolvedRecipeInstance]]
 -- #region rant
 --- This following hash table caused, without exaggeration,
 --- 3 days of on-off bug fixing and insanity spiralling to get working.
@@ -91,9 +94,9 @@ ISCraftingUI.selectedRecipe = nil;
 -- #endregion
 ISCraftingUI.availableItems_ht = nil;  -- ht[string, ar[zombie.inventory.InventoryItem]].
 ISCraftingUI.shouldUpdateFilter_b = false;
+ISCraftingUI.shouldUpdateOrder_b = false;
 ISCraftingUI.lastNameFilter_str = false;
 ISCraftingUI.lastComponentFilter_str = false;
-ISCraftingUI.shouldUpdateOrder_b = false;
 
 -- #region UI variables
 ISCraftingUI.panel = nil;
@@ -151,11 +154,11 @@ function ISCraftingUI:new(x, y, width, height, character)
     o.LabelAddIngredient = getText("IGUI_CraftUI_ButtonAddIngredient")
     o.LabelFavorite = getText("IGUI_CraftUI_Favorite")
     o.LabelClose = getText("IGUI_CraftUI_Close")
-    
+
     o.bottomInfoText1 = getText("IGUI_CraftUI_Controls1",
         getKeyName(ISCraftingUI.upArrow), getKeyName(ISCraftingUI.downArrow),
         getKeyName(ISCraftingUI.leftCategory), getKeyName(ISCraftingUI.rightCategory));
-    
+
     o.bottomInfoText2 = getText("IGUI_CraftUI_Controls2",
         getKeyName(ISCraftingUI.upArrow), getKeyName(ISCraftingUI.downArrow),
         getKeyName(ISCraftingUI.leftCategory), getKeyName(ISCraftingUI.rightCategory));
@@ -238,12 +241,12 @@ function ISCraftingUI:createChildren()
     local y = main_view_y_bottom - h;
     self.noteText = ISLabel:new(x, y, h, getText("IGUI_CraftUI_Note"), 1, 1, 1, 1, UIFont.Small, true);
     self:addChild(self.noteText);
-    
+
     local y = main_view_y_bottom + 2;
     self.keysText = ISLabel:new(0, y, h, "", 1, 1, 1, 1, UIFont.Small, true);
     self:addChild(self.keysText);
 
-    
+
     -- self.keysRichText = ISRichTextLayout:new(self.width)
     -- self.keysRichText:setMargins(5, 0, 5, 0)
 
@@ -354,14 +357,14 @@ function ISCraftingUI:render()
 
     local textWidth = getTextManager():MeasureStringX(UIFont.Small, getText("IGUI_CraftingUI_KnownRecipes", self.knownRecipes,self.totalRecipes))
     self:drawText(getText("IGUI_CraftingUI_KnownRecipes", self.knownRecipes,self.totalRecipes), self.width - textWidth - 5, self.panel:getY() + self.panel.tabHeight + 8, 1,1,1,1, UIFont.Small);
-    
+
     local text = "";
     if self.selectedRecipe and self.selectedRecipe:IsType(CDEvolvedRecipe) then
         text = self.bottomInfoText2;
     else
         text = self.bottomInfoText1;
     end
-    
+
     self.keysText:setName(text);
     local x = (self.width / 2) - (self.keysText.width / 2);
     self.keysText:setX(x);
@@ -436,14 +439,15 @@ end
 function ISCraftingUI:Refresh()
     -- TODO: Might move this into update itself?
     self:UpdateKnownRecipes();
-    self:UpdateRecipeFilter();
-    
     self:UpdateAvailableItems();
+    self:UpdateEvolvedItems();
+    self:UpdateRecipeFilter();
+
     self:UpdateRecipesAvailable();
     self:UpdateSelectedRecipe();
 
     self:UpdateRecipeOrder();
-    
+
     self.frameCounter_i = self.frameCounter_i + 1;
 end
 
@@ -487,14 +491,14 @@ function ISCraftingUI:UpdateRecipeFilter()
     local all_b = self.filterAll:isSelected(1)
     self.shouldUpdateFilter_b = false;
     self.shouldUpdateOrder_b = true;
-    
+
     self.currentCategory_str = self.panel.activeView.name;
     local selected_item = self:GetListboxSelected(self.recipe_listbox);
     self.recipe_listbox:clear();
     self.recipe_listbox.selected = -1;
     -- self.recipe_listbox:setScrollHeight(0);
     -- self.recipe_listbox.selected = s;
-    
+
     local recipes_list = nil;
     if all_b then
         recipes_list = {};
@@ -503,6 +507,22 @@ function ISCraftingUI:UpdateRecipeFilter()
         end
     else
         recipes_list = self.recipeCategories_ht[self.currentCategory_str];
+    end
+
+    --- I don't like doing it this way, but evo recipes break all the rules.
+    --- I would need to rewrite how I'm storing and identify my recipes
+    --- to neatly fit them into my existing structures,
+    --- just to accomodate for a dozen recipes.
+    if self.currentCategory_str == "Cooking" or all_b then
+        if recipes_list == nil then
+            recipes_list = {};
+        end
+
+        for _, recipe_ar in pairs(self.evolvedRecipeInstances_ht) do
+            for _, recipe in pairs(recipe_ar) do
+                recipes_list[recipe] = true;
+            end
+        end
     end
     if recipes_list == nil then return; end
 
@@ -516,7 +536,6 @@ function ISCraftingUI:UpdateRecipeFilter()
             self.recipe_listbox.selected = i;
         end
     end
-
 end
 
 function ISCraftingUI:UpdateAvailableItems()
@@ -535,27 +554,42 @@ function ISCraftingUI:UpdateAvailableItems()
         local inventory_items = container:getAllEval(function(a) return true end);
         for j = 0, inventory_items:size() - 1 do
             local item = inventory_items:get(j);
-            local full_type = item:getFullType()
+            local full_type = item:getFullType();
 
-            -- -- TODO: I'm not sure this is 1:one with the original code. Test it.
-            -- if self:isWaterSource(item, source:getCount()) then
-            --     result["Water"] = (result["Water"] or 0) + item:getDrainableUsesInt();
-            -- elseif sourceItemTypes[item:getFullType()] then
-            --     local count = 1
-            --     if not source:isDestroy() and item:IsDrainable() then
-            --         count = item:getDrainableUsesInt()
-            --     end
-            --     if not source:isDestroy() and instanceof(item, "Food") then
-            --         if source:getUse() > 0 then
-            --             count = -item:getHungerChange() * 100
-            --         end
-            --     end
-            --     result[item:getFullType()] = (result[item:getFullType()] or 0) + count;
-            -- end
             if self.availableItems_ht[full_type] == nil then
                 self.availableItems_ht[full_type] = {};
             end
             table.insert(self.availableItems_ht[full_type], item);
+        end
+    end
+end
+
+-- TODO: Could move this to UpdateAvailableItems.
+function ISCraftingUI:UpdateEvolvedItems()
+    --- As far as I can tell, the only way to check if an item is still nearby,
+    --- is to iterate over all the items nearby and try to find said item.
+    --- This is terribly unfortunate.
+
+    -- evolved item stuff
+    -- TODO: test not adding container list.
+
+    local recipe_instance_ht = CDTools:ShallowCopy(self.evolvedRecipeInstances_ht);
+    self.evolvedRecipeInstances_ht = {};
+    for i = 0, self.containerList:size() - 1 do
+        local container = self.containerList:get(i);
+        local inventory_items = container:getAllEval(function(a) return true end);
+        for j = 0, inventory_items:size() -1 do
+            local item = inventory_items:get(j);
+            local uid = item:getID();
+            -- Already indexed, just add it back to the table
+            if recipe_instance_ht[uid] then
+                self.evolvedRecipeInstances_ht[uid] = recipe_instance_ht[uid];
+            -- New item to index.
+            else
+                self.shouldUpdateFilter_b = true;
+                local recipes = self:GetItemEvolvedRecipes(item);
+                self.evolvedRecipeInstances_ht[uid] = recipes;
+            end
         end
     end
 end
@@ -715,12 +749,6 @@ function ISCraftingUI:UpdateRecipeOrder()
     -- Fallback; shouldn't happen.
     self.recipe_listbox.selected = -1;
 end
-
--- Code largely taken from ISCraftingUI:populateRecipesList
-function ISCraftingUI:UpdateEvolvedRecipes()
-    -- Get evolved recipes
-
-end
 -- #endregion
 
 -- #region Render functions
@@ -854,11 +882,11 @@ function ISCraftingUI:RenderBasicRecipeDetails(pos, recipe)
         self:drawText(getText("IGUI_CraftUI_NearItem", recipe.baseRecipe:getNearItem()), pos.x, pos.y, 1, 1, 1, 1, UIFont.Medium);
         pos.y = pos.y + ISCraftingUI.mediumFontHeight;
     end
-    
+
     -- Time to craft
     self:drawText(getText("IGUI_CraftUI_RequiredTime", recipe.baseRecipe:getTimeToMake()), pos.x, pos.y, 1, 1, 1, 1, UIFont.Medium);
     pos.y = pos.y + ISCraftingUI.mediumFontHeight;
-        
+
     if recipe.baseRecipe:getTooltip() then
         pos.y = pos.y + 10;
         local tooltip = getText(recipe.baseRecipe:getTooltip());
@@ -929,7 +957,7 @@ function ISCraftingUI:RenderEvolvedRecipeDetails(pos, recipe)
             local newX = pos.x + offset + labelWidth + imgPadX;
 
             self:drawTexture(self.PoisonTexture, newX, pos.y + (imgH - self.PoisonTexture:getHeight()) / 2, 1,r2,g2,b2)
-            
+
             pos.y = pos.y + ISCraftingUI.smallFontHeight + 7;
         end
     end
@@ -1079,9 +1107,9 @@ function ISCraftingUI.RenderNonEvolvedIngredient(ingredient_panel, y, item, alt)
         local imgW = 20
         local imgH = 20
         local dx = 6 + (item.item.multiple and 10 or 0)
-        
+
         ingredient_panel:drawText(item.text, dx + imgW + 4, y + (item.height - ISCraftingUI.smallFontHeight) / 2, r, g, b, 1, ingredient_panel.font)
-        
+
         if item.item.texture then
             local texWidth = item.item.texture:getWidth()
             local texHeight = item.item.texture:getHeight()
@@ -1263,6 +1291,32 @@ function ISCraftingUI:FilterRecipes(recipe_hs)
     return new_recipes;
 end
 
+function ISCraftingUI:GetItemEvolvedRecipes(base_item)
+    -- This indexes non-evolved items as an empty dictionary.
+    -- This prevents us needing to call getEvolvedRecipe on an item we know isn't an evo.
+    local recipes = {};
+
+    -- TODO: What does the container list do here? why is it passed?
+    local evo_recipes = RecipeManager.getEvolvedRecipe(base_item, self.character, self.containerList, false);
+    if not evo_recipes or evo_recipes:size() <= 0 then
+        return recipes;
+    end
+
+
+    -- One item, like a pot of water, can go to multiple recipes.
+    for i = 0, evo_recipes:size() - 1 do
+        local evo_recipe = evo_recipes:get(i);
+        if not evo_recipe:isHidden() or base_item ~= evo_recipe:getBaseItem() then
+            local cder = CDEvolvedRecipeInstance:New(base_item, evo_recipe);
+            if cder then
+                table.insert(recipes, cder);
+            end
+        end
+    end
+
+    return recipes;
+end
+
 function ISCraftingUI:AddCategory(category_name_internal)
     if self.categories_hs[category_name_internal] ~= nil then
         print("CDBetterCrafting: Tried to create a category that already exists!");
@@ -1345,7 +1399,7 @@ function ISCraftingUI:getAvailableItemsType()
         end
         testb = true;
     end
-    
+
     return result;
 end
 

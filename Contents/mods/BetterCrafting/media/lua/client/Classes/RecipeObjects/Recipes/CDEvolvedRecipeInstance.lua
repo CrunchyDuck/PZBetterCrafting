@@ -20,6 +20,7 @@ function CDEvolvedRecipeInstance:New(base_item, base_recipe)
     -- Call the base constructor.
     self = CDEvolvedRecipe.New(self, base_recipe);
     if not self then
+        print("CDDebug: " .. base_recipe:getName());
         return;
     end
     self.baseItem = base_item;
@@ -41,4 +42,11 @@ function CDEvolvedRecipeInstance:New(base_item, base_recipe)
             end
         end
     end
+
+    return self;
+end
+
+function CDEvolvedRecipeInstance:GetBaseItem()
+    -- For an instance, the base item *is* the instance of the base item.
+    return self.baseItem;
 end
