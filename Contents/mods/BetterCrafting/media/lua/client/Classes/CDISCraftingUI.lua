@@ -455,6 +455,7 @@ function ISCraftingUI:Refresh()
     -- TODO: Might move this into update itself?
     self:UpdateKnownRecipes();
     self:UpdateAvailableItems();
+    self:UpdateRecipeInstances();
     self:UpdateRecipeFilter();
 
     self:UpdateRecipesAvailable();
@@ -618,6 +619,17 @@ function ISCraftingUI:UpdateRecipesAvailable()
         recipe:UpdateAvailability(false);
         if recipe.availableChanged_b then
             self.shouldUpdateOrder_b = true;
+        end
+    end
+end
+
+function ISCraftingUI:UpdateRecipeInstances()
+    --- Because evolved items don't change their ID when an ingreident is added to them,
+    --- we just update them every frame. There shouldn't be more than a couple ever anyway.
+    for _, recipe_ar in pairs(self.evolvedRecipeInstances_ht) do
+        for _, recipe in pairs(recipe_ar) do
+            recipe:UpdateExtraItems();
+            recipe:UpdateAvailability(false);
         end
     end
 end
@@ -1266,7 +1278,6 @@ function ISCraftingUI:addItemInEvolvedRecipe(ingredient)
     ISTimedActionQueue.add(ISAddItemInRecipe:new(self.character, ingredient.recipe.baseRecipe, base_item, item_instance, (70 - self.character:getPerkLevel(Perks.Cooking))));
     self.craftInProgress = true;
     ISCraftingUI.ReturnItemsToOriginalContainer(self.character, returnToContainer);
-    -- self:Refresh();
 end
 -- #endregion
 
