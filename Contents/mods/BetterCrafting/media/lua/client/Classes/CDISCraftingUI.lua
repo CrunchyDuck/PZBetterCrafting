@@ -756,7 +756,6 @@ function ISCraftingUI.RenderRecipeList(recipe_listbox, y, item, alt)
     local crafting_ui = recipe_listbox.parent;
     local recipe = item.item;
     local baseItemDY = 0
-    -- TODO: I think this is causing evo recipes to have extra spacing
     if recipe.customRecipeName then
         baseItemDY = ISCraftingUI.fontHeightSmall
         item.height = recipe_listbox.itemheight + baseItemDY
@@ -775,9 +774,9 @@ function ISCraftingUI.RenderRecipeList(recipe_listbox, y, item, alt)
         recipe_listbox:drawRect(0, (y), recipe_listbox:getWidth(), item.height - 1, 0.3, 0.7, 0.35, 0.15);
     end
     recipe_listbox:drawText(recipe.baseRecipe:getName(), 6, y + 2, 1, 1, 1, a, UIFont.Medium);
-    -- if recipe.customRecipeName then
-    --     recipe_listbox:drawText(recipe.customRecipeName, 6, y + 2 + recipe_listbox.fontHeightMedium, 1, 1, 1, a, UIFont.Small);
-    -- end
+    if recipe.customRecipeName then
+        recipe_listbox:drawText(recipe.customRecipeName, 6, y + 2 + ISCraftingUI.fontHeightMedium, 1, 1, 1, a, UIFont.Small);
+    end
 
     local textWidth = 0;
     if recipe.texture then
