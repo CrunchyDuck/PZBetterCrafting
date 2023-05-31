@@ -9,4 +9,6 @@ Originally this was about adding some fun new options, but before long it became
 Hopefully this mod makes your experience a bit better, too :) 
 
 Joypad controls haven't been properly supported in the new menu. I don't use one to play zomboid and I don't know the code well enough to implement it, sorry :(
+
+Stress tested with 3000 items and x recipes and was still able to get 60fps
 poster=poster.png

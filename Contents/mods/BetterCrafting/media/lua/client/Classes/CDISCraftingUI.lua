@@ -92,7 +92,8 @@ ISCraftingUI.selectedRecipe = nil;
 --- While slower than the built in way (maybe), this exposes more of the code to modification
 --- The vanilla method is also a confusing mess that doesn't work nicely with my object oriented rewrite.
 -- #endregion
-ISCraftingUI.availableItems_ht = nil;  -- ht[string, ar[zombie.inventory.InventoryItem]].
+ISCraftingUI.availableItems_ht = {};  -- ht[string, ar[zombie.inventory.InventoryItem]].
+ISCraftingUI.indexedItems_ht = {};  -- ht[int, zombie.inventory.InventoryItem].
 ISCraftingUI.shouldUpdateFilter_b = false;
 ISCraftingUI.shouldUpdateOrder_b = false;
 ISCraftingUI.lastNameFilter_str = false;
@@ -433,6 +434,20 @@ function ISCraftingUI:OnActivateView()
     self.shouldUpdateFilter_b = true;
     self.shouldUpdateOrder_b = true;
 end
+
+-- Called whenever an item is added or tranformed.
+function ISCraftingUI:OnItemGained(base_item)
+    self.shouldUpdateFilter_b = true;
+
+    local recipes = self:GetItemEvolvedRecipes(base_item);
+    if recipes ~= nil then
+        self.evolvedRecipeInstances_ht[base_item:getID()] = recipes;
+    end
+end
+
+function ISCraftingUI:OnItemLost(base_item)
+    self.shouldUpdateFilter_b = true;
+end
 -- #endregion
 
 -- #region Update functions
@@ -440,7 +455,6 @@ function ISCraftingUI:Refresh()
     -- TODO: Might move this into update itself?
     self:UpdateKnownRecipes();
     self:UpdateAvailableItems();
-    self:UpdateEvolvedItems();
     self:UpdateRecipeFilter();
 
     self:UpdateRecipesAvailable();
@@ -506,7 +520,12 @@ function ISCraftingUI:UpdateRecipeFilter()
             recipes_list[recipe] = true;
         end
     else
-        recipes_list = self.recipeCategories_ht[self.currentCategory_str];
+        local cat_list = self.recipeCategories_ht[self.currentCategory_str];
+        if cat_list == nil then
+            recipes_list = nil;
+        else
+            recipes_list = CDTools:ShallowCopy(cat_list);
+        end
     end
 
     --- I don't like doing it this way, but evo recipes break all the rules.
@@ -548,48 +567,46 @@ function ISCraftingUI:UpdateAvailableItems()
         self.containerList:add(v.inventory);
     end
 
+    local found_items_hs = {};
+    --- i can't fucking believe lua has no way to remove keys from a hash table
+    --- was this language even designed by programmers
+    local recipe_instance_ht = CDTools:ShallowCopy(self.evolvedRecipeInstances_ht);
+    self.evolvedRecipeInstances_ht = {};
     self.availableItems_ht = {};
     for i = 0, self.containerList:size() - 1 do
         local container = self.containerList:get(i);
         local inventory_items = container:getAllEval(function(a) return true end);
         for j = 0, inventory_items:size() - 1 do
             local item = inventory_items:get(j);
+            local id = item:getID();
             local full_type = item:getFullType();
 
             if self.availableItems_ht[full_type] == nil then
                 self.availableItems_ht[full_type] = {};
             end
             table.insert(self.availableItems_ht[full_type], item);
+
+            -- Persist any recipes that are still around
+            if recipe_instance_ht[id] then
+                self.evolvedRecipeInstances_ht[id] = recipe_instance_ht[id];
+            end
+
+            found_items_hs[id] = true;
+            if not self.indexedItems_ht[id] then
+                self.indexedItems_ht[id] = true;
+                self:OnItemGained(item);
+            end
         end
     end
-end
 
--- TODO: Could move this to UpdateAvailableItems.
-function ISCraftingUI:UpdateEvolvedItems()
-    --- As far as I can tell, the only way to check if an item is still nearby,
-    --- is to iterate over all the items nearby and try to find said item.
-    --- This is terribly unfortunate.
-
-    -- evolved item stuff
-    -- TODO: test not adding container list.
-
-    local recipe_instance_ht = CDTools:ShallowCopy(self.evolvedRecipeInstances_ht);
-    self.evolvedRecipeInstances_ht = {};
-    for i = 0, self.containerList:size() - 1 do
-        local container = self.containerList:get(i);
-        local inventory_items = container:getAllEval(function(a) return true end);
-        for j = 0, inventory_items:size() -1 do
-            local item = inventory_items:get(j);
-            local uid = item:getID();
-            -- Already indexed, just add it back to the table
-            if recipe_instance_ht[uid] then
-                self.evolvedRecipeInstances_ht[uid] = recipe_instance_ht[uid];
-            -- New item to index.
-            else
-                self.shouldUpdateFilter_b = true;
-                local recipes = self:GetItemEvolvedRecipes(item);
-                self.evolvedRecipeInstances_ht[uid] = recipes;
-            end
+    -- Check for any items we didn't find.
+    local old_indexed_items = CDTools:ShallowCopy(self.indexedItems_ht);
+    self.indexedItems_ht = {};
+    for k, v in pairs(old_indexed_items) do
+        if found_items_hs[k] then
+            self.indexedItems_ht[k] = v;
+        else
+            self:OnItemLost(v);
         end
     end
 end
@@ -1292,33 +1309,35 @@ function ISCraftingUI:FilterRecipes(recipe_hs)
 end
 
 function ISCraftingUI:GetItemEvolvedRecipes(base_item)
-    -- This indexes non-evolved items as an empty dictionary.
-    -- This prevents us needing to call getEvolvedRecipe on an item we know isn't an evo.
-    local recipes = {};
-
     if not base_item:getExtraItems() then
-        return recipes;
+        return nil;
     end
 
     -- TODO: What does the container list do here? why is it passed?
     local evo_recipes = RecipeManager.getEvolvedRecipe(base_item, self.character, self.containerList, false);
     if not evo_recipes or evo_recipes:size() <= 0 then
-        return recipes;
+        return nil;
     end
 
-
+    local any_recipes_b = false;
+    local recipes = {};
     -- One item, like a pot of water, can go to multiple recipes.
     for i = 0, evo_recipes:size() - 1 do
         local evo_recipe = evo_recipes:get(i);
         if not evo_recipe:isHidden() or base_item ~= evo_recipe:getBaseItem() then
             local cder = CDEvolvedRecipeInstance:New(base_item, evo_recipe);
             if cder then
+                any_recipes_b = true;
                 table.insert(recipes, cder);
             end
         end
     end
 
-    return recipes;
+    if any_recipes_b then
+        return recipes;
+    else
+        return nil;
+    end
 end
 
 function ISCraftingUI:AddCategory(category_name_internal)
