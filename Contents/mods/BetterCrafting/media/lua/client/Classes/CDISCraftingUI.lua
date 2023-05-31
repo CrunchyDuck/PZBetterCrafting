@@ -756,6 +756,7 @@ function ISCraftingUI.RenderRecipeList(recipe_listbox, y, item, alt)
     local crafting_ui = recipe_listbox.parent;
     local recipe = item.item;
     local baseItemDY = 0
+    -- TODO: I think this is causing evo recipes to have extra spacing
     if recipe.customRecipeName then
         baseItemDY = ISCraftingUI.fontHeightSmall
         item.height = recipe_listbox.itemheight + baseItemDY
@@ -1295,6 +1296,10 @@ function ISCraftingUI:GetItemEvolvedRecipes(base_item)
     -- This indexes non-evolved items as an empty dictionary.
     -- This prevents us needing to call getEvolvedRecipe on an item we know isn't an evo.
     local recipes = {};
+
+    if not base_item:getExtraItems() then
+        return recipes;
+    end
 
     -- TODO: What does the container list do here? why is it passed?
     local evo_recipes = RecipeManager.getEvolvedRecipe(base_item, self.character, self.containerList, false);
