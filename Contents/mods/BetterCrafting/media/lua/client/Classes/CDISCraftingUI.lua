@@ -933,14 +933,14 @@ function ISCraftingUI:RenderEvolvedRecipeDetails(pos, recipe)
         self:drawText(recipe.baseItem:getDisplayName(), pos.x + offset + labelWidth + imgPadX + imgW + imgPadX, pos.y + dyText, r,g,b,1, UIFont.Small);
         pos.y = pos.y + ISCraftingUI.smallFontHeight + 7;
 
-        if recipe.extraItems and #recipe.extraItems > 0 then
+        if recipe.extraItems_ar and #recipe.extraItems_ar > 0 then
             self:drawText(getText("IGUI_CraftUI_AlreadyContainsItems"), pos.x, pos.y, 1,1,1,1, UIFont.Medium);
             pos.y = pos.y + ISCraftingUI.mediumFontHeight + 7;
 
             self:drawText(self.LabelDash, pos.x + offset, pos.y + dyText, r,g,b,1, UIFont.Small);
             local newX = pos.x + offset + labelWidth + imgPadX;
 
-            for _, h in ipairs(recipe.extraItems) do
+            for _, h in ipairs(recipe.extraItems_ar) do
                 self:drawTextureScaledAspect(h, newX, pos.y, imgW, imgH, g2,r2,b2,g2);
                 newX = newX + 22;
             end
